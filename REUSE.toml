@@ -5,32 +5,20 @@ version = 1
 
 [[annotations]]
 path = [
-  "Cargo.toml",
-  "Cargo.lock",
-  "mise.lock",
-
-  "deploy/*.svg",
-  "deploy/charts/tesor/templates/*",
-
-  "crates/tesor/src/assets/*.svg",
-  "crates/tesor/src/assets/*.ico",
-  "crates/tesor/src/assets/*.png",
-  "crates/tesor/src/assets/robots.txt",
-  "crates/tesor/src/assets/manifest.webmanifest",
+    "deploy/charts/tesor/templates/*",
+    "crates/tesor/src/assets/*",
+    "Cargo.lock",
+    "mise.lock",
 ]
 SPDX-FileCopyrightText = "2026 Nikolay Govorov"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 [[annotations]]
-path = [
-  "README.md",
-]
+path = ["README.md"]
 SPDX-FileCopyrightText = "2026 Nikolay Govorov"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 [[annotations]]
-path = [
-  "CLA.md",
-]
+path = ["CLA.md"]
 SPDX-FileCopyrightText = "2026 Nikolay Govorov"
 SPDX-License-Identifier = "CC-BY-3.0"
