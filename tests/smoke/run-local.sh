@@ -29,11 +29,11 @@ addr = "127.0.0.1:${PORT}"
 hostnames = []
 
 [server]
-shutdown_timeout = 5
-request_timeout = 600
+shutdown_timeout = "5s"
+request_timeout = "600s"
 max_body_size = "64 MB"
 max_concurrent_requests = 64
-rate_limit_period = 1
+rate_limit_period = "1s"
 rate_limit_burst_size = 200
 
 [telemetry.stdout]

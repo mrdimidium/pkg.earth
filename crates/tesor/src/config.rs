@@ -1,117 +1,83 @@
 // SPDX-FileCopyrightText: 2026 Nikolay Govorov
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+use garde::Validate;
+use ipnet::IpNet;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
-
-use bytesize::ByteSize;
-use ipnet::IpNet;
-use serde::Deserialize;
-use thiserror::Error;
 use tracing::info;
 
-use base::serde::{deserialize_duration, deserialize_listener_addr};
+use base::serde::deserialize_listener_addr;
+use dimidiumlabs_config::{NonEmptyPath, NonEmptyString, NonZeroByteSize, NonZeroDuration};
 use repos::{GoConfig, ZigConfig};
 
-#[derive(Debug, Error)]
-pub enum ConfigError {
-    #[error("failed to read config file: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("failed to parse config file: {0}")]
-    Parse(#[from] toml::de::Error),
-
-    #[error("appname '{0}' contains invalid characters (only a-z, A-Z, 0-9, -, _ allowed)")]
-    InvalidAppname(String),
-
-    #[error("dirname '{0}' does not exist")]
-    DirNotFound(PathBuf),
-
-    #[error("dirname '{0}' is not a directory")]
-    NotADirectory(PathBuf),
-
-    #[error("dirname '{0}' is not writable: {1}")]
-    NotWritable(PathBuf, std::io::Error),
-
-    #[error("listener '{0}': tls_crt is set but tls_key is missing")]
-    TlsKeyMissing(SocketAddr),
-
-    #[error("listener '{0}': tls_key is set but tls_crt is missing")]
-    TlsCrtMissing(SocketAddr),
-
-    #[error("listener '{0}': TLS crtificate file not found: {1}")]
-    TlsCrtNotFound(SocketAddr, PathBuf),
-
-    #[error("listener '{0}': TLS key file not found: {1}")]
-    TlsKeyNotFound(SocketAddr, PathBuf),
-
-    #[error("server policy '{0}' must not be zero")]
-    ZeroServerPolicy(&'static str),
-
-    #[error("maximum request body size does not fit this platform")]
-    RequestBodyLimitOverflow,
-
-    #[error("listener '{0}': invalid hostname authority '{1}'")]
-    InvalidHostname(SocketAddr, String),
-}
-
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 pub struct ServerConfig {
     /// When receiving a SIGINT/SIGTERM signal, we will wait for the proposed timeout before terminating workers
-    #[serde(deserialize_with = "deserialize_duration")]
-    pub shutdown_timeout: Duration,
+    #[garde(dive)]
+    pub shutdown_timeout: NonZeroDuration,
 
     /// Request timeout - maximum time to process a request (protects against Slowloris)
-    #[serde(deserialize_with = "deserialize_duration")]
-    pub request_timeout: Duration,
+    #[garde(dive)]
+    pub request_timeout: NonZeroDuration,
 
     /// Maximum request body size
-    pub max_body_size: ByteSize,
+    #[garde(dive)]
+    pub max_body_size: NonZeroByteSize<usize>,
 
     /// Maximum number of concurrent requests across all clients
+    #[garde(custom(validate_nonzero_usize))]
     pub max_concurrent_requests: usize,
 
     /// Rate limit: requests per second per client IP
-    #[serde(deserialize_with = "deserialize_duration")]
-    pub rate_limit_period: Duration,
+    #[garde(dive)]
+    pub rate_limit_period: NonZeroDuration,
 
     /// Rate limit: burst size (max requests allowed in a burst) per client IP
+    #[garde(custom(validate_nonzero_u32))]
     pub rate_limit_burst_size: u32,
 
     /// Reverse-proxy networks allowed to supply `X-Forwarded-For`.
     #[serde(default)]
+    #[garde(skip)]
     pub trusted_proxies: Vec<IpNet>,
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            shutdown_timeout: Duration::from_secs(60),
-            request_timeout: Duration::from_secs(30),
-            max_body_size: ByteSize::mb(64),
+            shutdown_timeout: NonZeroDuration::from_secs(60),
+            request_timeout: NonZeroDuration::from_secs(30),
+            max_body_size: NonZeroByteSize::mb(64),
             max_concurrent_requests: 512,
-            rate_limit_period: Duration::from_secs(10),
+            rate_limit_period: NonZeroDuration::from_secs(10),
             rate_limit_burst_size: 50,
             trusted_proxies: Vec::new(),
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 pub struct ListenerConfig {
     #[serde(deserialize_with = "deserialize_listener_addr")]
+    #[garde(custom(|addr, _| validate_listener(addr, self)))]
     pub addr: SocketAddr,
 
     /// Hostnames to accept for this listener. Empty means accept all.
+    #[garde(inner(custom(validate_hostname)))]
     pub hostnames: Vec<String>,
 
     /// Path to TLS certificate file (PEM format). If set, tls_key must also be set.
+    #[garde(skip)]
     pub tls_crt: Option<PathBuf>,
 
     /// Path to TLS private key file (PEM format). If set, tls_crt must also be set.
+    #[garde(skip)]
     pub tls_key: Option<PathBuf>,
 }
 
@@ -171,8 +137,9 @@ impl Default for StdoutConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Validate)]
 #[serde(default)]
+#[garde(allow_unvalidated)]
 pub struct OtelcolConfig {
     /// Enables sending telemetry to the otlp collector
     pub enabled: bool,
@@ -189,9 +156,9 @@ pub struct OtelcolConfig {
     /// OTLP endpoint (grpc:// or http://)
     pub endpoint: String,
 
-    /// Export timeout in seconds
-    #[serde(deserialize_with = "deserialize_duration")]
-    pub timeout: Duration,
+    /// Export timeout as a human-readable duration.
+    #[garde(dive)]
+    pub timeout: NonZeroDuration,
 
     /// Controls which logs will be sent to otlp
     pub log_level: LogLevel,
@@ -216,7 +183,7 @@ impl Default for OtelcolConfig {
             logs: true,
             traces: true,
             metrics: true,
-            timeout: Duration::from_secs(10),
+            timeout: NonZeroDuration::from_secs(10),
             endpoint: "http://localhost:4317".into(),
             log_level: LogLevel::Info,
             tls_ca: None,
@@ -227,10 +194,12 @@ impl Default for OtelcolConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default, Validate)]
 #[serde(default)]
+#[garde(allow_unvalidated)]
 pub struct TelemetryConfig {
     pub stdout: StdoutConfig,
+    #[garde(dive)]
     pub otelcol: Option<OtelcolConfig>,
 }
 
@@ -241,22 +210,30 @@ pub struct BackendsConfig {
     pub zig: ZigConfig,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
 #[serde(default)]
+#[garde(allow_unvalidated)]
 pub struct ConfigService {
-    appname: String,
-    dirname: PathBuf,
+    #[garde(dive, custom(validate_appname))]
+    appname: NonEmptyString,
+    #[garde(dive, custom(validate_dirname))]
+    dirname: NonEmptyPath,
+    #[garde(dive)]
     listen: Vec<ListenerConfig>,
+    #[garde(dive)]
     server: ServerConfig,
+    #[garde(dive)]
     telemetry: TelemetryConfig,
+    // Backends have no service-specific validation policy.
+    #[garde(skip)]
     backends: BackendsConfig,
 }
 
 impl Default for ConfigService {
     fn default() -> Self {
         Self {
-            appname: "tesor".to_string(),
-            dirname: PathBuf::from("./.tesor-state"),
+            appname: NonEmptyString::from("tesor"),
+            dirname: NonEmptyPath::from("./.tesor-state"),
             listen: vec![ListenerConfig::default()],
             server: ServerConfig::default(),
             telemetry: TelemetryConfig::default(),
@@ -266,121 +243,122 @@ impl Default for ConfigService {
 }
 
 impl ConfigService {
-    pub fn load(config_path: Option<PathBuf>) -> Result<Self, ConfigError> {
-        let config = match config_path {
-            Some(path) => {
-                info!("use config file from {}", path.to_str().unwrap());
-
-                let content = fs::read_to_string(path)?;
-                toml::from_str(&content)?
-            }
-            None => {
-                info!("configuration file path not provided");
-                Self::default()
-            }
-        };
-
-        config.validate()
-    }
-
-    fn validate(self) -> Result<Self, ConfigError> {
-        let mut chars = self.appname.chars();
-        if !chars.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
-            return Err(ConfigError::InvalidAppname(self.appname.clone()));
-        }
-
-        let metadata = fs::metadata(&self.dirname).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                ConfigError::DirNotFound(self.dirname.clone())
-            } else {
-                ConfigError::Io(e)
-            }
-        })?;
-
-        if !metadata.is_dir() {
-            return Err(ConfigError::NotADirectory(self.dirname.clone()));
-        }
-
-        let testfile = self.dirname.join(".health");
-        fs::write(&testfile, std::process::id().to_string())
-            .map_err(|e| ConfigError::NotWritable(self.dirname.clone(), e))?;
-        fs::remove_file(&testfile)?;
-
-        for (name, is_zero) in [
-            ("shutdown_timeout", self.server.shutdown_timeout.is_zero()),
-            ("request_timeout", self.server.request_timeout.is_zero()),
-            (
-                "max_concurrent_requests",
-                self.server.max_concurrent_requests == 0,
-            ),
-            ("rate_limit_period", self.server.rate_limit_period.is_zero()),
-            (
-                "rate_limit_burst_size",
-                self.server.rate_limit_burst_size == 0,
-            ),
-        ] {
-            if is_zero {
-                return Err(ConfigError::ZeroServerPolicy(name));
-            }
-        }
-        if usize::try_from(self.server.max_body_size.as_u64()).is_err() {
-            return Err(ConfigError::RequestBodyLimitOverflow);
-        }
-
-        // Validate listener configuration
-        for listener in &self.listen {
-            for hostname in &listener.hostnames {
-                if hostname.parse::<hyper::http::uri::Authority>().is_err() {
-                    return Err(ConfigError::InvalidHostname(
-                        listener.addr,
-                        hostname.clone(),
-                    ));
-                }
-            }
-            match (&listener.tls_crt, &listener.tls_key) {
-                (Some(_crt), None) => {
-                    return Err(ConfigError::TlsKeyMissing(listener.addr));
-                }
-                (None, Some(_)) => {
-                    return Err(ConfigError::TlsCrtMissing(listener.addr));
-                }
-                (Some(crt), Some(key)) => {
-                    if !crt.exists() {
-                        return Err(ConfigError::TlsCrtNotFound(listener.addr, crt.clone()));
-                    }
-                    if !key.exists() {
-                        return Err(ConfigError::TlsKeyNotFound(listener.addr, key.clone()));
-                    }
-                }
-                (None, None) => {}
-            }
-        }
-
-        Ok(self)
+    pub async fn load(
+        config_path: impl AsRef<Path>,
+    ) -> Result<dimidiumlabs_config::Loaded<Self>, dimidiumlabs_config::Error> {
+        let config_path = config_path.as_ref();
+        info!(path = %config_path.display(), "use config file");
+        dimidiumlabs_config::load(env!("CARGO_PKG_NAME"), config_path).await
     }
 
     pub fn appname(&self) -> &str {
-        &self.appname
+        self.appname.as_str()
     }
-
     pub fn dirname(&self) -> &Path {
-        &self.dirname
+        self.dirname.as_path()
     }
-
     pub fn server(&self) -> &ServerConfig {
         &self.server
     }
-
     pub fn listeners(&self) -> &[ListenerConfig] {
         &self.listen
     }
-
     pub fn telemetry(&self) -> &TelemetryConfig {
         &self.telemetry
     }
-
     pub fn backends(&self) -> &BackendsConfig {
         &self.backends
+    }
+}
+
+fn invalid(message: impl Into<String>) -> garde::Result {
+    Err(garde::Error::new(message.into()))
+}
+
+fn validate_appname(appname: &NonEmptyString, _: &()) -> garde::Result {
+    if appname
+        .as_str()
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        Ok(())
+    } else {
+        invalid(format!(
+            "appname '{appname}' contains invalid characters (only a-z, A-Z, 0-9, -, _ allowed)"
+        ))
+    }
+}
+
+fn validate_dirname(dirname: &NonEmptyPath, _: &()) -> garde::Result {
+    let dirname = dirname.as_path();
+    let metadata = fs::metadata(dirname).map_err(|error| {
+        garde::Error::new(if error.kind() == std::io::ErrorKind::NotFound {
+            format!("dirname '{}' does not exist", dirname.display())
+        } else {
+            format!("failed to read dirname '{}': {error}", dirname.display())
+        })
+    })?;
+    if !metadata.is_dir() {
+        return invalid(format!(
+            "dirname '{}' is not a directory",
+            dirname.display()
+        ));
+    }
+    let testfile = dirname.join(".health");
+    fs::write(&testfile, std::process::id().to_string()).map_err(|error| {
+        garde::Error::new(format!(
+            "dirname '{}' is not writable: {error}",
+            dirname.display()
+        ))
+    })?;
+    fs::remove_file(testfile).map_err(|error| garde::Error::new(error.to_string()))
+}
+
+fn validate_nonzero_usize(value: &usize, _: &()) -> garde::Result {
+    if *value == 0 {
+        invalid("server policy must not be zero")
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_nonzero_u32(value: &u32, _: &()) -> garde::Result {
+    if *value == 0 {
+        invalid("server policy must not be zero")
+    } else {
+        Ok(())
+    }
+}
+
+fn validate_hostname(hostname: &str, _: &()) -> garde::Result {
+    if hostname.parse::<hyper::http::uri::Authority>().is_ok() {
+        Ok(())
+    } else {
+        invalid(format!("invalid hostname authority '{hostname}'"))
+    }
+}
+
+fn validate_listener(_: &SocketAddr, listener: &ListenerConfig) -> garde::Result {
+    match (&listener.tls_crt, &listener.tls_key) {
+        (Some(_), None) => invalid(format!(
+            "listener '{}': tls_crt is set but tls_key is missing",
+            listener.addr
+        )),
+        (None, Some(_)) => invalid(format!(
+            "listener '{}': tls_key is set but tls_crt is missing",
+            listener.addr
+        )),
+        (Some(crt), Some(key)) if !crt.exists() => invalid(format!(
+            "listener '{}': TLS crtificate file not found: {}",
+            listener.addr,
+            crt.display()
+        )),
+        (Some(_), Some(key)) if !key.exists() => invalid(format!(
+            "listener '{}': TLS key file not found: {}",
+            listener.addr,
+            key.display()
+        )),
+        _ => Ok(()),
     }
 }
 
@@ -388,8 +366,8 @@ impl ConfigService {
 impl ConfigService {
     pub fn for_test(dirname: PathBuf) -> Self {
         Self {
-            appname: "test".to_string(),
-            dirname,
+            appname: NonEmptyString::from("test"),
+            dirname: NonEmptyPath::from(dirname),
             server: ServerConfig::default(),
             listen: vec![ListenerConfig {
                 addr: "127.0.0.1:0".parse().unwrap(),
@@ -409,299 +387,219 @@ mod tests {
     use tempfile::TempDir;
 
     fn base_config(dir: PathBuf) -> ConfigService {
-        ConfigService {
-            appname: "valid-name".to_string(),
-            dirname: dir,
-            server: ServerConfig::default(),
-            listen: vec![ListenerConfig {
-                addr: "127.0.0.1:0".parse().unwrap(),
-                hostnames: Vec::new(),
-                tls_crt: None,
-                tls_key: None,
-            }],
-            telemetry: TelemetryConfig::default(),
-            backends: BackendsConfig::default(),
+        ConfigService::for_test(dir)
+    }
+    fn invalid_config(config: &ConfigService) -> String {
+        config.validate().unwrap_err().to_string()
+    }
+
+    #[tokio::test]
+    async fn defaults_and_load_file() {
+        let dir = TempDir::new().unwrap();
+        let state = dir.path().join("state");
+        fs::create_dir(&state).unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, format!("appname = 'ok'\ndirname = '{}'\nlisten = []\n[server]\nshutdown_timeout = '1s'\nrequest_timeout = '1s'\nmax_body_size = '1 MB'\nmax_concurrent_requests = 1\nrate_limit_period = '1s'\nrate_limit_burst_size = 1\ntrusted_proxies = ['10.2.0.0/16']\n[backends.go]\nrefresh_interval = '1h'\n[telemetry.otelcol]\ntimeout = '10s'\n", state.display())).unwrap();
+        let loaded = ConfigService::load(&path).await.unwrap();
+        assert_eq!(loaded.metadata().path(), path);
+        assert_eq!(loaded.config().appname(), "ok");
+        assert_eq!(
+            loaded.config().server().trusted_proxies,
+            vec!["10.2.0.0/16".parse().unwrap()]
+        );
+        assert_eq!(
+            loaded
+                .config()
+                .backends()
+                .go
+                .refresh_interval
+                .get()
+                .as_secs(),
+            60 * 60
+        );
+        assert_eq!(
+            loaded
+                .config()
+                .telemetry()
+                .otelcol
+                .as_ref()
+                .unwrap()
+                .timeout
+                .get()
+                .as_secs(),
+            10
+        );
+    }
+
+    #[tokio::test]
+    async fn load_reports_shared_errors() {
+        let dir = TempDir::new().unwrap();
+        let error = ConfigService::load(dir.path().join("missing.toml"))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, dimidiumlabs_config::Error::Read { .. }));
+
+        let malformed = dir.path().join("malformed.toml");
+        fs::write(&malformed, "appname = [").unwrap();
+        let error = ConfigService::load(&malformed).await.unwrap_err();
+        assert!(matches!(
+            error,
+            dimidiumlabs_config::Error::Toml { metadata, .. }
+                if metadata.path() == malformed
+        ));
+    }
+
+    #[tokio::test]
+    async fn load_preserves_validation_metadata() {
+        let dir = TempDir::new().unwrap();
+        let state = dir.path().join("state");
+        fs::create_dir(&state).unwrap();
+        let path = dir.path().join("invalid.toml");
+        fs::write(
+            &path,
+            format!(
+                "appname = 'not valid'\ndirname = '{}'\nlisten = []\n[server]\nshutdown_timeout = '1s'\nrequest_timeout = '1s'\nmax_body_size = '1 MB'\nmax_concurrent_requests = 1\nrate_limit_period = '1s'\nrate_limit_burst_size = 1\n",
+                state.display()
+            ),
+        )
+        .unwrap();
+
+        let error = ConfigService::load(&path).await.unwrap_err();
+        match error {
+            dimidiumlabs_config::Error::Validation { source, metadata } => {
+                assert_eq!(metadata.path(), path);
+                assert_eq!(metadata.format(), dimidiumlabs_config::Format::Toml);
+                assert!(source.to_string().contains("appname"));
+            }
+            other => panic!("expected validation error, got {other:?}"),
         }
     }
 
-    fn write_temp_file(dir: &Path, name: &str) -> PathBuf {
-        let path = dir.join(name);
-        std::fs::write(&path, "x").unwrap();
-        path
+    #[tokio::test]
+    async fn loads_json_and_yaml() {
+        let dir = TempDir::new().unwrap();
+        let state = dir.path().join("state");
+        fs::create_dir(&state).unwrap();
+        let json = dir.path().join("config.json");
+        fs::write(
+            &json,
+            format!(
+                r#"{{"appname":"json","dirname":"{}","listen":[],"server":{{"shutdown_timeout":"1s","request_timeout":"1s","max_body_size":"1 MB","max_concurrent_requests":1,"rate_limit_period":"1s","rate_limit_burst_size":1}}}}"#,
+                state.display()
+            ),
+        )
+        .unwrap();
+        let yaml = dir.path().join("config.yaml");
+        fs::write(
+            &yaml,
+            format!(
+                "appname: yaml\ndirname: '{}'\nlisten: []\nserver:\n  shutdown_timeout: 1s\n  request_timeout: 1s\n  max_body_size: 1 MB\n  max_concurrent_requests: 1\n  rate_limit_period: 1s\n  rate_limit_burst_size: 1\n",
+                state.display()
+            ),
+        )
+        .unwrap();
+
+        assert_eq!(
+            ConfigService::load(json).await.unwrap().config().appname(),
+            "json"
+        );
+        assert_eq!(
+            ConfigService::load(yaml).await.unwrap().config().appname(),
+            "yaml"
+        );
     }
 
-    mod defaults_tests {
-        use super::*;
-
-        #[test]
-        fn test_for_test_config() {
-            let dir = TempDir::new().unwrap();
-            let cfg = ConfigService::for_test(dir.path().to_path_buf());
-            assert_eq!(cfg.appname(), "test");
-            assert_eq!(cfg.dirname(), dir.path());
-        }
-
-        #[test]
-        fn test_listener_default() {
-            let cfg = ListenerConfig::default();
-            assert!(cfg.hostnames.contains(&"localhost".to_string()));
-        }
-    }
-
-    mod load_tests {
-        use super::*;
-
-        #[test]
-        fn test_load_none_defaults() {
-            let temp = TempDir::new().unwrap();
-            let state = temp.path().join(".tesor-state");
-            std::fs::create_dir_all(&state).unwrap();
-            let cwd = std::env::current_dir().unwrap();
-            std::env::set_current_dir(temp.path()).unwrap();
-
-            let cfg = ConfigService::load(None).unwrap();
-            assert_eq!(cfg.appname(), "tesor");
-            assert!(cfg.server().trusted_proxies.is_empty());
-
-            std::env::set_current_dir(cwd).unwrap();
-        }
-
-        #[test]
-        fn test_load_some_and_parse_error() {
-            let dir = TempDir::new().unwrap();
-            let good = dir.path().join("good.toml");
-            let bad = dir.path().join("bad.toml");
-            let missing = dir.path().join("missing.toml");
-            let state = dir.path().join("state");
-            std::fs::create_dir_all(&state).unwrap();
-
-            std::fs::write(
-                &good,
+    #[tokio::test]
+    async fn rejects_numeric_durations_and_unitless_byte_sizes() {
+        let dir = TempDir::new().unwrap();
+        let state = dir.path().join("state");
+        fs::create_dir(&state).unwrap();
+        for (extension, source) in [
+            (
+                "toml",
                 format!(
-                    "appname = \"ok\"\n\
-                     dirname = \"{}\"\n\
-                     listen = []\n\
-                     [server]\n\
-                     shutdown_timeout = 1\n\
-                     request_timeout = 1\n\
-                     max_body_size = \"1 MB\"\n\
-                     max_concurrent_requests = 1\n\
-                     rate_limit_period = 1\n\
-                     rate_limit_burst_size = 1\n\
-                     trusted_proxies = [\"10.2.0.0/16\"]\n\
-                     [telemetry]\n\
-                     [telemetry.stdout]\n\
-                     enabled = true\n\
-                     log_level = \"info\"\n\
-                     log_format = \"pretty\"\n\
-                     [backends]\n\
-                     [backends.go]\n\
-                     [backends.zig]\n",
+                    "appname = 'test'\ndirname = '{}'\nlisten = []\n[server]\nshutdown_timeout = 1\n",
                     state.display()
                 ),
-            )
-            .unwrap();
-
-            std::fs::write(&bad, "not = [valid").unwrap();
-
-            let cfg = ConfigService::load(Some(good)).unwrap();
-            assert_eq!(cfg.appname(), "ok");
-            assert_eq!(
-                cfg.server().trusted_proxies,
-                vec!["10.2.0.0/16".parse().unwrap()]
-            );
-
-            let err = ConfigService::load(Some(missing)).unwrap_err();
-            assert!(err.to_string().contains("failed to read"));
-
-            let err = ConfigService::load(Some(bad)).unwrap_err();
-            assert!(err.to_string().contains("failed to parse"));
+            ),
+            (
+                "json",
+                format!(
+                    r#"{{"appname":"test","dirname":"{}","listen":[],"server":{{"shutdown_timeout":"1s","request_timeout":"1s","max_body_size":1024,"max_concurrent_requests":1,"rate_limit_period":"1s","rate_limit_burst_size":1}}}}"#,
+                    state.display()
+                ),
+            ),
+            (
+                "yaml",
+                format!(
+                    "appname: test\ndirname: '{}'\nlisten: []\nserver:\n  shutdown_timeout: 1s\n  request_timeout: 1s\n  max_body_size: '1024'\n  max_concurrent_requests: 1\n  rate_limit_period: 1s\n  rate_limit_burst_size: 1\n",
+                    state.display()
+                ),
+            ),
+        ] {
+            let path = dir.path().join(format!("invalid.{extension}"));
+            fs::write(&path, source).unwrap();
+            assert!(ConfigService::load(path).await.is_err());
         }
     }
 
-    mod validation_tests {
-        use super::*;
+    #[test]
+    fn validates_appname_directory_and_server_policies() {
+        let dir = TempDir::new().unwrap();
+        let mut config = base_config(dir.path().to_path_buf());
+        config.appname = "bad name!".into();
+        assert!(invalid_config(&config).contains("appname 'bad name!'"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.appname = "".into();
+        let report = invalid_config(&config);
+        assert!(report.contains("appname"));
+        assert!(report.contains("must not be empty"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.dirname = "".into();
+        let report = invalid_config(&config);
+        assert!(report.contains("dirname"));
+        assert!(report.contains("must not be empty"));
+        let config = base_config(dir.path().join("missing"));
+        assert!(invalid_config(&config).contains("does not exist"));
+        let file = dir.path().join("file");
+        fs::write(&file, "x").unwrap();
+        assert!(invalid_config(&base_config(file)).contains("is not a directory"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.server.shutdown_timeout = NonZeroDuration::ZERO;
+        assert!(invalid_config(&config).contains("must be at least 1 nanoseconds"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.server.request_timeout = NonZeroDuration::ZERO;
+        assert!(invalid_config(&config).contains("must be at least 1 nanoseconds"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.server.max_concurrent_requests = 0;
+        assert!(invalid_config(&config).contains("server policy must not be zero"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.server.rate_limit_period = NonZeroDuration::ZERO;
+        assert!(invalid_config(&config).contains("must be at least 1 nanoseconds"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.server.rate_limit_burst_size = 0;
+        assert!(invalid_config(&config).contains("server policy must not be zero"));
+    }
 
-        #[test]
-        fn test_validate_invalid_appname() {
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            cfg.appname = "bad name!".to_string();
-            let err = cfg.validate().unwrap_err();
-            assert!(err.to_string().contains("appname 'bad name!'"));
-        }
-
-        #[test]
-        fn test_validate_rejects_zero_server_policies() {
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            cfg.server.max_concurrent_requests = 0;
-            assert!(matches!(
-                cfg.validate(),
-                Err(ConfigError::ZeroServerPolicy("max_concurrent_requests"))
-            ));
-
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            cfg.server.rate_limit_burst_size = 0;
-            assert!(matches!(
-                cfg.validate(),
-                Err(ConfigError::ZeroServerPolicy("rate_limit_burst_size"))
-            ));
-        }
-
-        #[test]
-        fn test_validate_rejects_invalid_listener_hostname() {
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            cfg.listen[0].hostnames = vec!["bad host".to_string()];
-            assert!(matches!(
-                cfg.validate(),
-                Err(ConfigError::InvalidHostname(_, _))
-            ));
-        }
-
-        #[test]
-        fn test_validate_dir_not_found() {
-            let temp = TempDir::new().unwrap();
-            let missing = temp.path().join("missing-dir");
-            let cfg = base_config(missing);
-            let err = cfg.validate().unwrap_err();
-            assert!(err.to_string().contains("does not exist"));
-        }
-
-        #[test]
-        fn test_validate_not_a_directory() {
-            let dir = TempDir::new().unwrap();
-            let file_path = dir.path().join("file");
-            std::fs::write(&file_path, "x").unwrap();
-            let cfg = base_config(file_path);
-            let err = cfg.validate().unwrap_err();
-            assert!(err.to_string().contains("is not a directory"));
-        }
-
-        #[cfg(unix)]
-        #[test]
-        fn test_validate_metadata_io_error() {
-            use std::os::unix::fs::PermissionsExt;
-
-            let dir = TempDir::new().unwrap();
-            let child = dir.path().join("child");
-            std::fs::create_dir_all(&child).unwrap();
-
-            let mut perms = std::fs::metadata(dir.path()).unwrap().permissions();
-            perms.set_mode(0o000);
-            std::fs::set_permissions(dir.path(), perms).unwrap();
-
-            let cfg = base_config(child.clone());
-            let err = cfg.validate().unwrap_err();
-            assert!(err.to_string().contains("failed to read"));
-
-            let mut perms = std::fs::metadata(dir.path()).unwrap().permissions();
-            perms.set_mode(0o700);
-            std::fs::set_permissions(dir.path(), perms).unwrap();
-        }
-
-        #[cfg(unix)]
-        #[test]
-        fn test_validate_not_writable() {
-            use std::os::unix::fs::PermissionsExt;
-
-            let dir = TempDir::new().unwrap();
-            let mut perms = std::fs::metadata(dir.path()).unwrap().permissions();
-            perms.set_mode(0o400);
-            std::fs::set_permissions(dir.path(), perms).unwrap();
-
-            let cfg = base_config(dir.path().to_path_buf());
-            let err = cfg.validate().unwrap_err();
-            assert!(err.to_string().contains("not writable"));
-        }
-
-        #[test]
-        fn test_validate_tls_key_missing() {
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            cfg.listen = vec![ListenerConfig {
-                addr: "127.0.0.1:0".parse().unwrap(),
-                hostnames: Vec::new(),
-                tls_crt: Some(PathBuf::from("/tmp/does-not-matter.crt")),
-                tls_key: None,
-            }];
-            let err = cfg.validate().unwrap_err();
-            assert!(err.to_string().contains("tls_key is missing"));
-        }
-
-        #[test]
-        fn test_validate_tls_crt_missing() {
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            cfg.listen = vec![ListenerConfig {
-                addr: "127.0.0.1:0".parse().unwrap(),
-                hostnames: Vec::new(),
-                tls_crt: None,
-                tls_key: Some(PathBuf::from("/tmp/does-not-matter.key")),
-            }];
-            let err = cfg.validate().unwrap_err();
-            assert!(err.to_string().contains("tls_crt is missing"));
-        }
-
-        #[test]
-        fn test_validate_tls_files_not_found() {
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            cfg.listen = vec![ListenerConfig {
-                addr: "127.0.0.1:0".parse().unwrap(),
-                hostnames: Vec::new(),
-                tls_crt: Some(PathBuf::from("/tmp/missing.crt")),
-                tls_key: Some(PathBuf::from("/tmp/missing.key")),
-            }];
-            let err = cfg.validate().unwrap_err();
-            assert!(err.to_string().contains("TLS crtificate file not found"));
-        }
-
-        #[test]
-        fn test_validate_tls_key_not_found() {
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            let crt = write_temp_file(dir.path(), "cert.pem");
-            cfg.listen = vec![ListenerConfig {
-                addr: "127.0.0.1:0".parse().unwrap(),
-                hostnames: Vec::new(),
-                tls_crt: Some(crt),
-                tls_key: Some(dir.path().join("missing.key")),
-            }];
-            let err = cfg.validate().unwrap_err();
-            assert!(err.to_string().contains("TLS key file not found"));
-        }
-
-        #[test]
-        fn test_validate_tls_files_exist() {
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            let crt = write_temp_file(dir.path(), "cert.pem");
-            let key = write_temp_file(dir.path(), "key.pem");
-            cfg.listen = vec![ListenerConfig {
-                addr: "127.0.0.1:0".parse().unwrap(),
-                hostnames: Vec::new(),
-                tls_crt: Some(crt),
-                tls_key: Some(key),
-            }];
-            cfg.validate().unwrap();
-        }
-
-        #[test]
-        fn test_validate_ok_and_getters() {
-            let dir = TempDir::new().unwrap();
-            let mut cfg = base_config(dir.path().to_path_buf());
-            cfg.listen = vec![ListenerConfig::default()];
-
-            let cfg = cfg.validate().unwrap();
-            assert_eq!(cfg.appname(), "valid-name");
-            assert_eq!(cfg.dirname(), dir.path());
-            let _ = cfg.server();
-            let _ = cfg.listeners();
-            let _ = cfg.telemetry();
-            let _ = cfg.backends();
-        }
+    #[test]
+    fn validates_hostnames_and_tls_pairs_and_files() {
+        let dir = TempDir::new().unwrap();
+        let mut config = base_config(dir.path().to_path_buf());
+        config.listen[0].hostnames = vec!["bad host".into()];
+        assert!(invalid_config(&config).contains("invalid hostname authority"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.listen[0].tls_crt = Some(dir.path().join("cert"));
+        assert!(invalid_config(&config).contains("tls_key is missing"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.listen[0].tls_key = Some(dir.path().join("key"));
+        assert!(invalid_config(&config).contains("tls_crt is missing"));
+        let mut config = base_config(dir.path().to_path_buf());
+        config.listen[0].tls_crt = Some(dir.path().join("cert"));
+        config.listen[0].tls_key = Some(dir.path().join("key"));
+        assert!(invalid_config(&config).contains("TLS crtificate file not found"));
+        fs::write(dir.path().join("cert"), "x").unwrap();
+        assert!(invalid_config(&config).contains("TLS key file not found"));
+        fs::write(dir.path().join("key"), "x").unwrap();
+        config.validate().unwrap();
     }
 }

@@ -2,18 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::net::SocketAddr;
-use std::time::Duration;
 
 use ::serde::de::Deserialize;
-
-/// Deserializes a duration from seconds (u64).
-pub fn deserialize_duration<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-where
-    D: ::serde::Deserializer<'de>,
-{
-    let secs = u64::deserialize(deserializer)?;
-    Ok(Duration::from_secs(secs))
-}
 
 /// Deserializes a SocketAddr from a string.
 pub fn deserialize_listener_addr<'de, D>(deserializer: D) -> Result<SocketAddr, D::Error>
@@ -33,30 +23,6 @@ where
 
     raw.parse::<SocketAddr>()
         .map_err(|err| ::serde::de::Error::custom(format!("invalid address '{raw}': {err}")))
-}
-
-#[cfg(test)]
-mod deserialize_duration_tests {
-    use super::*;
-    use ::serde::Deserialize;
-
-    #[derive(Debug, Deserialize)]
-    struct DurationWrapper {
-        #[serde(deserialize_with = "deserialize_duration")]
-        value: Duration,
-    }
-
-    #[test]
-    fn test_deserialize_duration() {
-        let value: DurationWrapper = serde_json::from_str(r#"{"value": 5}"#).unwrap();
-        assert_eq!(value.value, Duration::from_secs(5));
-    }
-
-    #[test]
-    fn test_deserialize_duration_invalid_type() {
-        let err = serde_json::from_str::<DurationWrapper>(r#"{"value": "5"}"#).unwrap_err();
-        assert!(err.to_string().contains("invalid type"));
-    }
 }
 
 #[cfg(test)]

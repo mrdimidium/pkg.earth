@@ -17,12 +17,12 @@ data:
     max_body_size = {{ .Values.config.server.maxBodySize | quote }}
     max_concurrent_requests = {{ .Values.config.server.maxConcurrentRequests }}
 
-    rate_limit_period = {{ .Values.config.server.rateLimitPeriod }}
+    rate_limit_period = {{ .Values.config.server.rateLimitPeriod | quote }}
     rate_limit_burst_size = {{ .Values.config.server.rateLimitBurstSize }}
     trusted_proxies = {{ .Values.config.server.trustedProxies | toJson }}
 
-    request_timeout = {{ .Values.config.server.requestTimeout }}
-    shutdown_timeout = {{ .Values.config.server.shutdownTimeout }}
+    request_timeout = {{ .Values.config.server.requestTimeout | quote }}
+    shutdown_timeout = {{ .Values.config.server.shutdownTimeout | quote }}
 
     [[listen]]
     addr = "0.0.0.0:2000"
@@ -31,7 +31,7 @@ data:
     {{- range $name, $backend := .Values.config.backends }}
     [backends.{{ $name }}]
     enabled = {{ $backend.enabled }}
-    refresh_interval = {{ $backend.refreshInterval }}
+    refresh_interval = {{ $backend.refreshInterval | quote }}
 
     {{- end }}
     [telemetry.stdout]

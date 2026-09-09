@@ -101,13 +101,28 @@ const HTTP2_KEEP_ALIVE_TIMEOUT: Duration = Duration::from_secs(10);
 const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const HSTS_POLICY: &str = "max-age=63072000; includeSubDomains; preload";
 const HELP: &str = "\
-Usage: tesor [--config=<path>]
+Usage: tesor --config=<path>
 
 Options:
-  --config=<path>    Path to config file (optional)
+  --config=<path>    Path to config file (required)
   --help             Show this help message
   --version          Show version
 ";
+
+fn parse_config_path(args: &[String]) -> Result<PathBuf, &'static str> {
+    let mut config_path = None;
+    for arg in args {
+        if let Some(path) = arg.strip_prefix("--config=") {
+            if path.is_empty() {
+                return Err("--config=<path> requires a non-empty path");
+            }
+            if config_path.replace(PathBuf::from(path)).is_some() {
+                return Err("only one --config=<path> may be supplied");
+            }
+        }
+    }
+    config_path.ok_or("--config=<path> is required")
+}
 
 /// Contains metainfo about one server interface
 #[derive(Clone)]
@@ -127,27 +142,28 @@ struct RequestInfo {
 
 #[tokio::main]
 async fn main() {
-    let mut config_path = None;
-    for arg in std::env::args().skip(1) {
-        if arg == "--help" || arg == "-h" {
-            print!("{HELP}");
-            return;
-        }
-        if arg == "--version" || arg == "-V" {
-            println!("tesor {VERSION}");
-            return;
-        }
-        if let Some(path) = arg.strip_prefix("--config=") {
-            config_path = Some(PathBuf::from(path));
-        }
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        print!("{HELP}");
+        return;
+    }
+    if args.iter().any(|arg| arg == "--version" || arg == "-V") {
+        println!("tesor {VERSION}");
+        return;
     }
 
-    let config = Arc::new(
-        config::ConfigService::load(config_path).unwrap_or_else(|e| {
-            eprintln!("invalid config: {e}");
+    let config_path = parse_config_path(&args).unwrap_or_else(|message| {
+        eprintln!("{message}");
+        std::process::exit(1);
+    });
+    let loaded_config = config::ConfigService::load(config_path)
+        .await
+        .unwrap_or_else(|error| {
+            eprintln!("invalid config: {error}");
             std::process::exit(1);
-        }),
-    );
+        });
+    let (config, _metadata) = loaded_config.into_parts();
+    let config = Arc::new(config);
 
     let mut telemetry =
         telemetry::TelemetryService::init(config.telemetry(), config.appname(), VERSION);
@@ -244,7 +260,7 @@ async fn main() {
 
     let rate_limit_config = Arc::new(
         rate_limit(
-            config.server().rate_limit_period,
+            config.server().rate_limit_period.get(),
             NonZeroU32::new(config.server().rate_limit_burst_size)
                 .expect("rate-limit burst is validated"),
             ClientIpKeyExtractor,
@@ -341,12 +357,11 @@ async fn main() {
         };
         let listener_app = listener_app
             .layer(tower_http::limit::RequestBodyLimitLayer::new(
-                usize::try_from(config.server().max_body_size.as_u64())
-                    .expect("request body limit fits usize"),
+                config.server().max_body_size.get(),
             ))
             .layer(tower_http::timeout::TimeoutLayer::with_status_code(
                 http::StatusCode::REQUEST_TIMEOUT,
-                config.server().request_timeout,
+                config.server().request_timeout.get(),
             ))
             .layer(trace_layer.clone())
             .layer(RateLimitLayer::new(rate_limit_config.clone()))
@@ -476,7 +491,7 @@ async fn main() {
     index_cancel.cancel();
 
     // Wait for listeners, streaming response bodies, and index tasks to finish.
-    let shutdown_result = tokio::time::timeout(config.server().shutdown_timeout, async {
+    let shutdown_result = tokio::time::timeout(config.server().shutdown_timeout.get(), async {
         while let Some(result) = tasks.join_next().await {
             if let Err(e) = result {
                 error!("listener task failed: {e}");
@@ -602,6 +617,23 @@ fn extract_host(req: &Request<Body>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[test]
+    fn parses_required_single_config_path() {
+        assert_eq!(parse_config_path(&[]), Err("--config=<path> is required"));
+        assert_eq!(
+            parse_config_path(&["--config=".into()]),
+            Err("--config=<path> requires a non-empty path")
+        );
+        assert_eq!(
+            parse_config_path(&["--config=config.toml".into()]).unwrap(),
+            PathBuf::from("config.toml")
+        );
+        assert_eq!(
+            parse_config_path(&["--config=one.toml".into(), "--config=two.toml".into()]),
+            Err("only one --config=<path> may be supplied")
+        );
+    }
 
     use super::*;
 

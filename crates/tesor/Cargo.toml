@@ -16,17 +16,18 @@ repository.workspace = true
 [dependencies]
 base.workspace = true
 repos.workspace = true
+dimidiumlabs-config = { git = "https://git.dimidiumlabs.io/platform.git", rev = "024596fdce489827a66da779ec28a714b22a6658" }
 
-dimidiumlabs-ui = { git = "https://git.dimidiumlabs.io/platform.git", rev = "53c91185b6dfd11cb803e88e1fe200bf6a44960b" }
-dimidiumlabs-server = { git = "https://git.dimidiumlabs.io/platform.git", rev = "53c91185b6dfd11cb803e88e1fe200bf6a44960b" }
+dimidiumlabs-ui = { git = "https://git.dimidiumlabs.io/platform.git", rev = "024596fdce489827a66da779ec28a714b22a6658" }
+dimidiumlabs-server = { git = "https://git.dimidiumlabs.io/platform.git", rev = "024596fdce489827a66da779ec28a714b22a6658" }
 
 async-trait.workspace = true
 axum.workspace = true
 axum-server.workspace = true
 bytes.workspace = true
-bytesize.workspace = true
 chrono.workspace = true
 crc32fast.workspace = true
+garde.workspace = true
 hex.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -43,7 +44,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-util.workspace = true
-toml.workspace = true
 tonic.workspace = true
 tower.workspace = true
 tower-http.workspace = true
@@ -64,7 +64,7 @@ opentelemetry_sdk.workspace = true
 sd-notify.workspace = true
 
 [build-dependencies]
-dimidiumlabs-ui-build = { git = "https://git.dimidiumlabs.io/platform.git", rev = "53c91185b6dfd11cb803e88e1fe200bf6a44960b" }
+dimidiumlabs-ui-build = { git = "https://git.dimidiumlabs.io/platform.git", rev = "024596fdce489827a66da779ec28a714b22a6658" }
 
 [dev-dependencies]
 tempfile.workspace = true

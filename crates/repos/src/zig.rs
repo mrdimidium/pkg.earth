@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::Duration as StdDuration;
 
+use dimidiumlabs_config::Duration;
 use semver::Version as SemVersion;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Serialize};
@@ -18,7 +19,7 @@ use super::*;
 pub struct ZigConfig {
     pub enabled: bool,
     pub upstream: Url,
-    pub refresh_interval: u64,
+    pub refresh_interval: Duration,
 }
 
 impl Default for ZigConfig {
@@ -26,7 +27,7 @@ impl Default for ZigConfig {
         Self {
             enabled: true,
             upstream: Url::parse("https://ziglang.org").unwrap(),
-            refresh_interval: 60 * 60,
+            refresh_interval: Duration::from_secs(60 * 60),
         }
     }
 }
@@ -35,8 +36,8 @@ impl BackendConfig for ZigConfig {
     fn enabled(&self) -> bool {
         self.enabled
     }
-    fn refresh_interval(&self) -> Duration {
-        Duration::from_secs(self.refresh_interval)
+    fn refresh_interval(&self) -> StdDuration {
+        self.refresh_interval.as_std()
     }
 }
 

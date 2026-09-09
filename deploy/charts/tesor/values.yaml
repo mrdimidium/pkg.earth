@@ -45,11 +45,11 @@ config:
     appname: tesor
     hostnames: []
     server:
-        shutdownTimeout: 60
-        requestTimeout: 30
+        shutdownTimeout: "60s"
+        requestTimeout: "30s"
         maxBodySize: 64 MiB
         maxConcurrentRequests: 512
-        rateLimitPeriod: 10
+        rateLimitPeriod: "10s"
         rateLimitBurstSize: 50
         # CIDR networks allowed to supply X-Forwarded-For. Keep empty unless
         # the Service is reachable only through a header-sanitizing proxy.
@@ -57,10 +57,10 @@ config:
     backends:
         go:
             enabled: true
-            refreshInterval: 3600
+            refreshInterval: "1h"
         zig:
             enabled: true
-            refreshInterval: 3600
+            refreshInterval: "1h"
     log:
         enabled: true
         level: info

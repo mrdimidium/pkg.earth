@@ -15,6 +15,7 @@ repository.workspace = true
 
 [dependencies]
 base.workspace = true
+dimidiumlabs-config = { git = "https://git.dimidiumlabs.io/platform.git", rev = "024596fdce489827a66da779ec28a714b22a6658" }
 
 async-trait.workspace = true
 bytes.workspace = true
