@@ -58,8 +58,9 @@ sudo systemctl enable --now tesor
 
 The examples use the `nightly` channel updated from `main`. Replace `nightly`
 with `stable` to follow packages published from matching `v*` release tags.
-Signed APK, DEB, and RPM packages and the `ghcr.io/dimidiumlabs/tesor` image
-are published for AMD64, ARM64, and RISC-V 64.
+Signed APK, DEB, and RPM packages, standalone GitHub Release binaries, and the
+`ghcr.io/dimidiumlabs/tesor` image are published for AMD64, ARM64, and RISC-V
+64. GitHub releases also include a `SHA256SUMS` manifest.
 
 ## Build from source
 
