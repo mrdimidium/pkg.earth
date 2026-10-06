@@ -1,0 +1,11 @@
+/* SPDX-FileCopyrightText: 2026 Nikolay Govorov */
+/* SPDX-License-Identifier: MPL-2.0 */
+
+.heading a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.heading a:hover {
+    text-decoration: underline;
+}

@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Nikolay Govorov
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 [workspace]
 members = ["crates/*", "tests/smoke"]
@@ -9,10 +9,10 @@ resolver = "3"
 publish = false
 edition = "2024"
 version = "0.1.0"
-license = "AGPL-3.0-or-later"
+license = "MPL-2.0"
 authors = ["Nikolay Govorov <me@govorov.online>"]
 homepage = "https://pkg.earth"
-repository = "https://git.dimidiumlabs.io/tesor"
+repository = "https://gilti.dev/pkg.earth"
 
 [workspace.dependencies]
 # local dependencies

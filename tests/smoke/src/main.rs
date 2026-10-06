@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Nikolay Govorov
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 
-// Black-box smoke tests for Tesor.
+// Black-box smoke tests for pkg.earth.
 //
-// Downloads archives from Tesor and upstream, compares sha256 hashes,
+// Downloads archives from pkg.earth and upstream, compares sha256 hashes,
 // verifies that minisig signatures (Zig) and sha256 checksums (Go) match upstream.
 //
 // Usage:
-//   TESOR_URL=https://pkg.earth cargo run -p smoke
+//   PKG_EARTH_URL=https://pkg.earth cargo run -p smoke
 
 use sha2::{Digest, Sha256};
 
@@ -215,8 +215,8 @@ fn test_web(r: &mut Runner, base_url: &str) {
                 } else if !ct.contains("text/html") {
                     r.fail(name, &format!("content-type: {ct}"));
                     None
-                } else if !body.contains("Tesor") {
-                    r.fail(name, "body missing \"Tesor\"");
+                } else if !body.contains("pkg.earth") {
+                    r.fail(name, "body missing \"pkg.earth\"");
                     None
                 } else if fingerprinted_asset_path(&body, "foundation", "css").is_none()
                     || fingerprinted_asset_path(&body, "application", "css").is_none()
@@ -289,8 +289,8 @@ fn test_web(r: &mut Runner, base_url: &str) {
                     r.fail(name, &format!("status {status}"));
                 } else if !ct.contains("text/html") {
                     r.fail(name, &format!("content-type: {ct}"));
-                } else if !body.contains("AGPL") {
-                    r.fail(name, "body missing \"AGPL\"");
+                } else if !body.contains("MPL-2.0") {
+                    r.fail(name, "body missing \"MPL-2.0\"");
                 } else {
                     r.ok(name);
                 }
@@ -320,11 +320,11 @@ fn test_go(r: &mut Runner, base_url: &str) {
                 r.fetch_bytes(&format!("{base_url}/go/{file}")),
                 r.fetch_bytes(&format!("https://go.dev/dl/{file}")),
             ) {
-                (Ok(tesor), Ok(upstream)) => {
-                    let zh = sha256hex(&tesor);
+                (Ok(mirror), Ok(upstream)) => {
+                    let zh = sha256hex(&mirror);
                     let uh = sha256hex(&upstream);
                     if zh != uh {
-                        r.fail(&name, &format!("tesor={zh} upstream={uh}"));
+                        r.fail(&name, &format!("mirror={zh} upstream={uh}"));
                     } else {
                         r.ok(&name);
                     }
@@ -378,11 +378,11 @@ fn test_zig(r: &mut Runner, base_url: &str) {
                 r.fetch_bytes(&format!("{base_url}/zig/{}", entry.file)),
                 r.fetch_bytes(&zig_upstream_url(entry.file, entry.version)),
             ) {
-                (Ok(tesor), Ok(upstream)) => {
-                    let zh = sha256hex(&tesor);
+                (Ok(mirror), Ok(upstream)) => {
+                    let zh = sha256hex(&mirror);
                     let uh = sha256hex(&upstream);
                     if zh != uh {
-                        r.fail(&name, &format!("tesor={zh} upstream={uh}"));
+                        r.fail(&name, &format!("mirror={zh} upstream={uh}"));
                     } else {
                         r.ok(&name);
                     }
@@ -394,11 +394,11 @@ fn test_zig(r: &mut Runner, base_url: &str) {
         // Signature: compare .minisig with upstream
         {
             let name = format!("zig: {}.minisig matches upstream", entry.file);
-            let tesor_url = format!("{base_url}/zig/{}.minisig", entry.file);
+            let mirror_url = format!("{base_url}/zig/{}.minisig", entry.file);
             let upstream_url = format!("{}.minisig", zig_upstream_url(entry.file, entry.version));
-            match (r.fetch_bytes(&tesor_url), r.fetch_bytes(&upstream_url)) {
-                (Ok(tesor), Ok(upstream)) => {
-                    if tesor != upstream {
+            match (r.fetch_bytes(&mirror_url), r.fetch_bytes(&upstream_url)) {
+                (Ok(mirror), Ok(upstream)) => {
+                    if mirror != upstream {
                         r.fail(&name, "minisig content differs from upstream");
                     } else {
                         r.ok(&name);
@@ -420,11 +420,11 @@ fn test_zig(r: &mut Runner, base_url: &str) {
 }
 
 fn main() {
-    let base_url = match std::env::var("TESOR_URL") {
+    let base_url = match std::env::var("PKG_EARTH_URL") {
         Ok(url) => url,
         Err(_) => {
-            eprintln!("Error: TESOR_URL environment variable is not set.");
-            eprintln!("Usage: TESOR_URL=https://pkg.earth cargo run -p smoke");
+            eprintln!("Error: PKG_EARTH_URL environment variable is not set.");
+            eprintln!("Usage: PKG_EARTH_URL=https://pkg.earth cargo run -p smoke");
             std::process::exit(1);
         }
     };

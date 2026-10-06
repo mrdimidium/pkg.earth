@@ -1,5 +1,5 @@
 // SPDX-FileCopyrightText: 2026 Nikolay Govorov
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 
 use std::time::Duration as StdDuration;
 
@@ -488,10 +488,10 @@ mod tests_go_filename {
             upstream: Url::parse("https://dl.google.com/go/").unwrap(),
             ..Default::default()
         };
-        let url = t.upstream_url(&config, "tesor:test").unwrap();
+        let url = t.upstream_url(&config, "pkg.earth:test").unwrap();
         assert_eq!(
             url.as_str(),
-            "https://dl.google.com/go/go1.25.6.linux-amd64.tar.gz?source=tesor%3Atest"
+            "https://dl.google.com/go/go1.25.6.linux-amd64.tar.gz?source=pkg.earth%3Atest"
         );
     }
 

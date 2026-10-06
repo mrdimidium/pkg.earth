@@ -1,0 +1,26 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh disable=SC2034
+# SPDX-FileCopyrightText: 2026 Nikolay Govorov
+# SPDX-License-Identifier: MPL-2.0
+
+description="pkg.earth server (tiny packages caching proxy)"
+
+command="/usr/local/bin/pkg-earth"
+command_args="--config=/etc/pkg-earth.toml"
+command_user="pkg-earth:pkg-earth"
+
+supervisor="supervise-daemon"
+respawn_delay=30
+output_log="/var/log/pkg-earth/out.log"
+error_log="/var/log/pkg-earth/err.log"
+
+depend() {
+	need net
+	after firewall
+}
+
+start_pre() {
+	checkpath -d -o pkg-earth:pkg-earth -m 0750 /var/log/pkg-earth
+	checkpath -d -o pkg-earth:pkg-earth -m 0755 /var/lib/pkg-earth
+	checkpath -d -o pkg-earth:pkg-earth -m 0750 /run/pkg-earth
+}

@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Nikolay Govorov
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 min_version = "2026.7.5"
 
@@ -20,7 +20,7 @@ zig = "0.15.2"
 [task_config]
 dir = "{{cwd}}"
 includes = [
-  "git::https://git.dimidiumlabs.io/platform.git//tasks?ref=901d24f1de9e31e4a50c0b8114ae43cf52c1b4c4",
+  "git::https://gilti.dev/platform.git//tasks?ref=06e80eab24180b9f56e8ff1e0182aad60e56f734",
 ]
 
 [tasks.fmt]

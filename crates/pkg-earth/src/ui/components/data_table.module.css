@@ -1,0 +1,14 @@
+/* SPDX-FileCopyrightText: 2026 Nikolay Govorov */
+/* SPDX-License-Identifier: MPL-2.0 */
+
+.table {
+    border-collapse: collapse;
+}
+
+.table th,
+.table td {
+    padding: 7px 8px;
+    border: 2px solid var(--color-border);
+    text-align: start;
+    vertical-align: top;
+}

@@ -1,14 +1,14 @@
 #!/bin/sh
 # SPDX-FileCopyrightText: 2026 Nikolay Govorov
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 set -e
 
-if [ -x "/bin/systemctl" ] && [ -d /run/systemd/system ] && [ -f /usr/lib/systemd/system/tesor.service ]; then
+if [ -x "/bin/systemctl" ] && [ -d /run/systemd/system ] && [ -f /usr/lib/systemd/system/pkg-earth.service ]; then
   /bin/systemctl daemon-reload
-  /bin/systemctl enable tesor
+  /bin/systemctl enable pkg-earth
 fi
 
-if command -v rc-update >/dev/null && [ -f /etc/init.d/tesor ]; then
-  rc-update add tesor default
+if command -v rc-update >/dev/null && [ -f /etc/init.d/pkg-earth ]; then
+  rc-update add pkg-earth default
 fi

@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Nikolay Govorov
+# SPDX-License-Identifier: MPL-2.0
+
+apiVersion: v2
+type: application
+
+# Replaced by the release task when the chart is packaged.
+version: 0.0.0
+appVersion: dev
+
+name: pkg-earth
+home: https://pkg.earth
+sources:
+    - https://gilti.dev/pkg.earth
+description: Tiny package caching proxy

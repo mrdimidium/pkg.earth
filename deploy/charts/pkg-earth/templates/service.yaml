@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Nikolay Govorov
+# SPDX-License-Identifier: MPL-2.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pkg-earth.fullname" . }}
+  labels:
+    {{- include "pkg-earth.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "pkg-earth.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+
+# vim: set filetype=helm:

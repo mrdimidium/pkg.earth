@@ -1,0 +1,19 @@
+/* SPDX-FileCopyrightText: 2026 Nikolay Govorov */
+/* SPDX-License-Identifier: MPL-2.0 */
+
+.license {
+    margin: 1rem 0;
+}
+
+.used-by {
+    margin-top: -10px;
+}
+
+.license-text {
+    max-height: 280px;
+    overflow-y: scroll;
+    white-space: pre-wrap;
+    background-color: var(--color-license-bg);
+    border-left: 4px solid var(--color-border);
+    padding: .8em 1em;
+}

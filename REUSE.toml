@@ -1,24 +1,19 @@
 # SPDX-FileCopyrightText: 2026 Nikolay Govorov
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 version = 1
 
 [[annotations]]
 path = [
-    "deploy/charts/tesor/templates/*",
-    "crates/tesor/src/assets/*",
+    "deploy/charts/pkg-earth/templates/*",
+    "crates/pkg-earth/src/assets/*",
     "Cargo.lock",
     "mise.lock",
 ]
 SPDX-FileCopyrightText = "2026 Nikolay Govorov"
-SPDX-License-Identifier = "AGPL-3.0-or-later"
+SPDX-License-Identifier = "MPL-2.0"
 
 [[annotations]]
 path = ["README.md"]
 SPDX-FileCopyrightText = "2026 Nikolay Govorov"
 SPDX-License-Identifier = "CC-BY-4.0"
-
-[[annotations]]
-path = ["CLA.md"]
-SPDX-FileCopyrightText = "2026 Nikolay Govorov"
-SPDX-License-Identifier = "CC-BY-3.0"

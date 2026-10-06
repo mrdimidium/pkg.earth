@@ -1,12 +1,12 @@
-# Tesor — tiny packages caching proxy
+# pkg.earth — tiny packages caching proxy
 
-Soon humanity will go to Mars and in order for the colonists to be able
-to program, we will need a local mirror of packages.
+Soon humanity will go to Mars and in order for the colonists to be able to
+program, we will need a local mirror of packages.
 
 ## Installation
 
-Please note that the project is in its infancy and
-is **not** intended for production use.
+Please note that the project is in its infancy and is **not** intended for
+production use.
 
 **Debian/Ubuntu:**
 
@@ -14,10 +14,10 @@ is **not** intended for production use.
 sudo apt install curl gnupg
 
 curl -fsSL https://pkg.dimidiumlabs.io/packages.gpg | sudo gpg --dearmor -o /usr/share/keyrings/dimidiumlabs.gpg
-echo "deb [signed-by=/usr/share/keyrings/dimidiumlabs.gpg] https://pkg.dimidiumlabs.io/tesor/apt/ nightly main" | sudo tee /etc/apt/sources.list.d/tesor.list
-sudo apt update && sudo apt install tesor
+echo "deb [signed-by=/usr/share/keyrings/dimidiumlabs.gpg] https://pkg.dimidiumlabs.io/pkg-earth/apt/ nightly main" | sudo tee /etc/apt/sources.list.d/pkg-earth.list
+sudo apt update && sudo apt install pkg-earth
 
-sudo systemctl enable --now tesor
+sudo systemctl enable --now pkg-earth
 ```
 
 **Alpine:**
@@ -25,59 +25,59 @@ sudo systemctl enable --now tesor
 ```bash
 sudo wget -q https://pkg.dimidiumlabs.io/keys/packages.0001.rsa.pub \
   -O /etc/apk/keys/packages.0001.rsa.pub
-echo "https://pkg.dimidiumlabs.io/tesor/apk/nightly/$(apk --print-arch)" | \
+echo "https://pkg.dimidiumlabs.io/pkg-earth/apk/nightly/$(apk --print-arch)" | \
   sudo tee -a /etc/apk/repositories
-sudo apk update && sudo apk add tesor
-sudo rc-update add tesor default
-sudo rc-service tesor start
+sudo apk update && sudo apk add pkg-earth
+sudo rc-update add pkg-earth default
+sudo rc-service pkg-earth start
 ```
 
 **Fedora/RHEL:**
 
 ```bash
 # DNF5 (Fedora 41+, RHEL 10+)
-sudo dnf config-manager addrepo --from-repofile=https://pkg.dimidiumlabs.io/tesor/rpm/nightly/tesor-nightly.repo
+sudo dnf config-manager addrepo --from-repofile=https://pkg.dimidiumlabs.io/pkg-earth/rpm/nightly/pkg-earth-nightly.repo
 
 # DNF4 (Fedora 40 and older, RHEL 8/9)
-sudo curl -o /etc/yum.repos.d/tesor-nightly.repo https://pkg.dimidiumlabs.io/tesor/rpm/nightly/tesor-nightly.repo
+sudo curl -o /etc/yum.repos.d/pkg-earth-nightly.repo https://pkg.dimidiumlabs.io/pkg-earth/rpm/nightly/pkg-earth-nightly.repo
 
-sudo dnf install tesor
-sudo systemctl enable --now tesor
+sudo dnf install pkg-earth
+sudo systemctl enable --now pkg-earth
 ```
 
 **openSUSE:**
 
 ```bash
 sudo rpm --import https://pkg.dimidiumlabs.io/packages.gpg
-sudo zypper addrepo https://pkg.dimidiumlabs.io/tesor/rpm/nightly/ tesor-nightly
+sudo zypper addrepo https://pkg.dimidiumlabs.io/pkg-earth/rpm/nightly/ pkg-earth-nightly
 sudo zypper refresh
-sudo zypper install tesor
+sudo zypper install pkg-earth
 
-sudo systemctl enable --now tesor
+sudo systemctl enable --now pkg-earth
 ```
 
 The examples use the `nightly` channel updated from `main`. Replace `nightly`
 with `stable` to follow packages published from matching `v*` release tags.
 Signed APK, DEB, and RPM packages, standalone GitHub Release binaries, and the
-`ghcr.io/dimidiumlabs/tesor` image are published for AMD64, ARM64, and RISC-V
+`ghcr.io/mrdimidium/pkg.earth` image are published for AMD64, ARM64, and RISC-V
 64. GitHub releases also include a `SHA256SUMS` manifest.
 
 ## Build from source
 
-1. Clone repo: `git clone https://git.dimidiumlabs.io/tesor.git && cd tesor`
+1. Clone repo: `git clone https://gilti.dev/pkg.earth.git && cd pkg.earth`
 1. Provision the toolchain and system build dependencies: `mise bootstrap`
 1. Build from source: `mise exec -- cargo build --release`
 1. Install manually
 
-    ```bash
-    sudo groupadd --system tesor
-    sudo useradd --system --gid tesor --no-create-home --shell /usr/sbin/nologin tesor
-    sudo install -m 700 -o tesor ./deploy/tesor.toml     /etc/
-    sudo install -m 755 -o root   ./deploy/tesor.service  /usr/lib/systemd/system
-    sudo install -m 755 -o root   target/release/tesor /usr/local/bin/
-    ```
+   ```bash
+   sudo groupadd --system pkg-earth
+   sudo useradd --system --gid pkg-earth --no-create-home --shell /usr/sbin/nologin pkg-earth
+   sudo install -m 700 -o pkg-earth ./deploy/pkg-earth.toml     /etc/
+   sudo install -m 755 -o root   ./deploy/pkg-earth.service  /usr/lib/systemd/system
+   sudo install -m 755 -o root   target/release/pkg-earth /usr/local/bin/
+   ```
 
-1. start systemd service: `sudo systemctl enable --now tesor`
+1. start systemd service: `sudo systemctl enable --now pkg-earth`
 
 ## Contributing
 
@@ -86,17 +86,6 @@ stories.
 
 If you are making a contribution for the first time or from a new email, please
 add yourself to the `.mailmap`.
-
-### Signoff
-
-To include your code, we ask that you read and agree to the [CLA](./CLA.md). To
-sign, add a `CLA-Version: 1.0` and a `Signed-off-by` trailer to every commit
-(`git commit -s --trailer "CLA-Version: 1.0"`). Each commit in a pull request
-must carry a valid `Signed-off-by` line matching the commit author. Please use
-your real name. We cannot include code from anonymous contributors.
-
-AI agents MUST NOT add Signed-off-by tags. Only humans can legally certify the
-Contributor License Agreement.
 
 ### AI policy
 
@@ -113,7 +102,7 @@ Remember, AI agents should make software better, not worse.
 
 ## Licensing
 
-Tesor source code is licensed under AGPL-3.0-or-later. Documentation is
-licensed under CC-BY-4.0.
+Source code is licensed under MPL-2.0. Documentation is licensed under
+CC-BY-4.0.
 
 The bundled JetBrains Mono font files are licensed under OFL-1.1.

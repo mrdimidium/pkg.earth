@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Nikolay Govorov
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 [package]
 name = "repos"
@@ -15,7 +15,7 @@ repository.workspace = true
 
 [dependencies]
 base.workspace = true
-dimidiumlabs-config = { git = "https://git.dimidiumlabs.io/platform.git", rev = "024596fdce489827a66da779ec28a714b22a6658" }
+dimidiumlabs-config = { git = "https://gilti.dev/platform.git", rev = "06e80eab24180b9f56e8ff1e0182aad60e56f734" }
 
 async-trait.workspace = true
 bytes.workspace = true

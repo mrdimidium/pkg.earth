@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Nikolay Govorov
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 [licenses]
 allow = [
@@ -19,7 +19,6 @@ allow = [
   "Unicode-3.0",
 
   # GPL versions
-  "AGPL-3.0-or-later",
   "GPL-2.0-or-later",
   "GPL-3.0-or-later",
   "LGPL-2.0-or-later",
@@ -32,4 +31,4 @@ unused-allowed-license = "allow"
 unknown-git = "deny"
 unknown-registry = "deny"
 required-git-spec = "rev"
-allow-git = ["https://git.dimidiumlabs.io/platform.git"]
+allow-git = ["https://gilti.dev/platform.git"]

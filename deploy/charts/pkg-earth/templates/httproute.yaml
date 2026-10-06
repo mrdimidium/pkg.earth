@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 Nikolay Govorov
+# SPDX-License-Identifier: MPL-2.0
+
+{{- if .Values.route.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "pkg-earth.fullname" . }}
+  labels:
+    {{- include "pkg-earth.labels" . | nindent 4 }}
+spec:
+  {{- with .Values.route.parentRefs }}
+  parentRefs:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.route.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - backendRefs:
+        - name: {{ include "pkg-earth.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}
+
+# vim: set filetype=helm:

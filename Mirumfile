@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Nikolay Govorov
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 set -eu
 
@@ -65,7 +65,7 @@ mise run check -- --script tests/chart.sh
 
 release_environment=$(mktemp)
 release_context_arguments=(
-    --package tesor
+    --package pkg-earth
     --source-ref "${GITHUB_REF:-}"
     --revision "${GITHUB_SHA:-}"
     --build-number "${GITHUB_RUN_NUMBER:-local}"
@@ -105,12 +105,12 @@ for architecture in amd64 arm64 riscv64; do
         --manifest-path Cargo.toml \
         --locked \
         --release \
-        --package tesor \
+        --package pkg-earth \
         --target "$target"
 
-    container_binary=".container/binary-$architecture/tesor"
-    install -Dm0755 "target/$target/release/tesor" "$container_binary"
-    install -Dm0755 "$container_binary" target/release/tesor
+    container_binary=".container/binary-$architecture/pkg-earth"
+    install -Dm0755 "target/$target/release/pkg-earth" "$container_binary"
+    install -Dm0755 "$container_binary" target/release/pkg-earth
     mise run package -- \
         --config deploy/nfpm.yaml \
         --version "$package_version" \
@@ -129,24 +129,24 @@ docker buildx inspect --bootstrap
 
 mise run container -- \
     --file deploy/Dockerfile \
-    --tag tesor:ci \
+    --tag pkg-earth:ci \
     --build-arg VERSION=ci \
     --build-arg "REVISION=$revision" \
     --provenance false \
     --sbom false \
     --load
-docker run --rm tesor:ci --help >/dev/null
+docker run --rm pkg-earth:ci --help >/dev/null
 
-install -Dm0755 .container/binary-amd64/tesor target/release/tesor
+install -Dm0755 .container/binary-amd64/pkg-earth target/release/pkg-earth
 ./tests/smoke/run-local.sh
 
 [ "$publish" = true ] || exit 0
 
-repository_owner=$(printf '%s' "${GITHUB_REPOSITORY_OWNER:-dimidiumlabs}" |
+repository_owner=$(printf '%s' "${GITHUB_REPOSITORY_OWNER:-mrdimidium}" |
     tr '[:upper:]' '[:lower:]')
 repository=$GITHUB_REPOSITORY
 server_url=${GITHUB_SERVER_URL:-https://github.com}
-image="ghcr.io/$repository_owner/tesor"
+image="ghcr.io/$repository_owner/pkg.earth"
 image_version=$(printf '%s' "$version" | tr + _)
 
 gh auth token |
@@ -158,8 +158,8 @@ gh auth token | helm registry login ghcr.io \
 mise run container -- \
     --file deploy/Dockerfile \
     --platform linux/amd64,linux/arm64,linux/riscv64 \
-    --cache-from type=gha,scope=tesor \
-    --cache-to type=gha,mode=max,scope=tesor \
+    --cache-from type=gha,scope=pkg-earth \
+    --cache-to type=gha,mode=max,scope=pkg-earth \
     --tag "$image:sha-$revision" \
     --tag "$image:$image_version" \
     --label "org.opencontainers.image.revision=$revision" \
@@ -169,14 +169,14 @@ mise run container -- \
     --build-arg "REVISION=$revision" \
     --push
 mise run chart -- \
-    --chart deploy/charts/tesor \
+    --chart deploy/charts/pkg-earth \
     --version "$version" \
     --app-version "$version" \
     --push "oci://ghcr.io/$repository_owner/charts"
 
 # Publication validates signing keys before updating the package repository.
 mise run publish -- \
-    --service tesor \
+    --service pkg-earth \
     --channel "$channel" \
     --input dist \
     deb rpm apk
@@ -194,9 +194,9 @@ mise run github-release -- \
     --version "$version" \
     --checks-url "$server_url/$repository/actions/runs/$GITHUB_RUN_ID" \
     --binary \
-        tesor-linux-amd64=.container/binary-amd64/tesor \
-        tesor-linux-arm64=.container/binary-arm64/tesor \
-        tesor-linux-riscv64=.container/binary-riscv64/tesor \
+        pkg-earth-linux-amd64=.container/binary-amd64/pkg-earth \
+        pkg-earth-linux-arm64=.container/binary-arm64/pkg-earth \
+        pkg-earth-linux-riscv64=.container/binary-riscv64/pkg-earth \
     --image "$image:$image_version" \
     --image-alias "$image:$mutable_image_tag" \
     --asset dist/*.apk dist/*.deb dist/*.rpm
