@@ -10,13 +10,28 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use log::debug;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 use url::Url;
 
-pub use base::ContentType;
 pub use go::{GoBackend, GoConfig};
 pub use zig::{ZigBackend, ZigConfig};
+
+#[derive(Debug, Clone, Copy)]
+pub enum ContentType {
+    TextPlain,
+    OctetStream,
+}
+
+impl ContentType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::TextPlain => "text/plain",
+            Self::OctetStream => "application/octet-stream",
+        }
+    }
+}
 
 /// Backend operation error.
 #[derive(Debug, Clone, Error)]
@@ -405,14 +420,17 @@ impl<S: BackendSpec> Backend<S> {
                 match S::fetch_signature(&file, &self.config, &self.source, &*self.network).await {
                     Ok(updated) => {
                         if let Err(e) = self.storage.update_file_meta(&updated).await {
-                            tracing::debug!(
-                                filename = file.filename,
-                                "failed to store signature: {e}"
+                            debug!(
+                                "failed to store signature; filename={} error={e}",
+                                file.filename
                             );
                         }
                     }
                     Err(e) => {
-                        tracing::debug!(filename = file.filename, "failed to fetch signature: {e}");
+                        debug!(
+                            "failed to fetch signature; filename={} error={e}",
+                            file.filename
+                        );
                     }
                 }
             }

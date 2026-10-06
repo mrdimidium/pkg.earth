@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use axum::{Router, body, extract, http, response, routing};
-use tracing::error;
+use log::error;
 
 use crate::proxy;
+use crate::repos::{Backend, BackendError, BackendSpec, ContentType, ResolvedFile};
 use crate::storage;
-use repos::{Backend, BackendError, BackendSpec, ResolvedFile};
 
 /// Generic controller for backend HTTP handling.
 pub struct BackendController<S: BackendSpec> {
@@ -46,11 +46,14 @@ impl<S: BackendSpec> BackendController<S> {
             }
             Ok(ResolvedFile::Upstream { url, mime }) => (url, mime),
             Err(BackendError::NotFound) => {
-                error!(backend = S::ID, filename, "file not found");
+                error!("file not found; backend={} filename={filename}", S::ID);
                 return Err(http::StatusCode::NOT_FOUND);
             }
             Err(e) => {
-                error!(backend = S::ID, filename, "error resolving file: {e}");
+                error!(
+                    "failed to resolve file; backend={} filename={filename} error={e}",
+                    S::ID
+                );
                 return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
             }
         };
@@ -66,8 +69,8 @@ impl<S: BackendSpec> BackendController<S> {
             Ok(None) => {}
             Err(err) => {
                 error!(
-                    backend = S::ID,
-                    filename, "failed to get file from storage: {err}"
+                    "failed to get file from storage; backend={} filename={filename} error={err}",
+                    S::ID
                 );
                 return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
             }
@@ -82,8 +85,8 @@ impl<S: BackendSpec> BackendController<S> {
             Ok(()) => {}
             Err(err) => {
                 error!(
-                    backend = S::ID,
-                    filename, "failed to put file to storage: {err}"
+                    "failed to put file in storage; backend={} filename={filename} error={err}",
+                    S::ID
                 );
                 return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
             }
@@ -99,7 +102,7 @@ impl<S: BackendSpec> BackendController<S> {
     fn build_response(
         status: http::StatusCode,
         bytes: bytes::Bytes,
-        mime: repos::ContentType,
+        mime: ContentType,
     ) -> response::Response {
         response::Response::builder()
             .status(status)

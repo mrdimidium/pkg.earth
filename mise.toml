@@ -36,7 +36,7 @@ cargo test --all-features --release --locked
 """
 
 [tasks.smoke]
-run = "cargo run -p smoke"
+run = "./tests/smoke.sh"
 
 [tasks.smoke-local]
 run = "./tests/smoke/run-local.sh"
@@ -44,6 +44,6 @@ run = "./tests/smoke/run-local.sh"
 [tasks.coverage]
 run = """
 mkdir -p target/coverage/
-cargo llvm-cov --all-features --workspace --lcov --output-path target/coverage/lcov.info
-cargo llvm-cov --all-features --workspace --html --output-dir target/coverage/html
+cargo llvm-cov --all-features --lcov --output-path target/coverage/lcov.info
+cargo llvm-cov --all-features --html --output-dir target/coverage/html
 """

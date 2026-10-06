@@ -1,25 +1,22 @@
 # SPDX-FileCopyrightText: 2026 Nikolay Govorov
 # SPDX-License-Identifier: MPL-2.0
 
-[workspace]
-members = ["crates/*", "tests/smoke"]
-resolver = "3"
-
-[workspace.package]
-publish = false
-edition = "2024"
+[package]
+name = "pkg-earth"
+description = "pkg.earth web server and daemon"
 version = "0.1.0"
-license = "MPL-2.0"
 authors = ["Nikolay Govorov <me@govorov.online>"]
+edition = "2024"
+license = "MPL-2.0"
+publish = false
 homepage = "https://pkg.earth"
 repository = "https://gilti.dev/pkg.earth"
 
-[workspace.dependencies]
-# local dependencies
-base = { path = "crates/base" }
-repos = { path = "crates/repos" }
+[dependencies]
+dimidiumlabs-config = { git = "https://gilti.dev/platform.git", rev = "06e80eab24180b9f56e8ff1e0182aad60e56f734" }
+dimidiumlabs-server = { git = "https://gilti.dev/platform.git", rev = "06e80eab24180b9f56e8ff1e0182aad60e56f734" }
+dimidiumlabs-ui = { git = "https://gilti.dev/platform.git", rev = "06e80eab24180b9f56e8ff1e0182aad60e56f734" }
 
-# external
 async-trait = "0.1"
 axum = { version = "0.8", features = ["http2", "macros"] }
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
@@ -31,7 +28,6 @@ hex = "0.4"
 http-body-util = "0.1"
 hyper = "1.8"
 hyper-tls = "0.6"
-ipnet = { version = "2", features = ["serde"] }
 hyper-util = { version = "0.1", features = [
   "client-legacy",
   "http1",
@@ -40,7 +36,10 @@ hyper-util = { version = "0.1", features = [
   "service",
   "tokio",
 ] }
+ipnet = { version = "2", features = ["serde"] }
+log = "0.4"
 maud = { version = "0.27", features = ["axum"] }
+openssl = { version = "0.10", features = ["vendored"] }
 rustls = { version = "0.23", default-features = false, features = [
   "ring",
   "std",
@@ -70,11 +69,8 @@ tokio = { version = "1.49", features = [
 ] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["logging", "ring", "tls12"] }
 tokio-util = "0.7"
-toml = "0.9"
-tonic = "0.14"
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = [
-  "trace",
   "compression-br",
   "compression-gzip",
   "limit",
@@ -87,33 +83,12 @@ tower-http = { version = "0.6", features = [
 url = { version = "2.5", features = ["serde"] }
 uuid = { version = "1.19", features = ["v4", "v5"] }
 
-# telemetry
-opentelemetry = "0.31"
-opentelemetry-appender-tracing = "0.31"
-opentelemetry-otlp = { version = "0.31", features = [
-  "grpc-tonic",
-  "http-proto",
-  "logs",
-  "metrics",
-  "trace",
-  "tls",
-  "tls-roots",
-] }
-opentelemetry-semantic-conventions = "0.31"
-opentelemetry_sdk = { version = "0.31", features = [
-  "rt-tokio",
-  "logs",
-  "metrics",
-  "trace",
-] }
-openssl = { version = "0.10", features = ["vendored"] }
-tracing = "0.1"
-tracing-opentelemetry = "0.32"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-
-# platform-specific
+[target.'cfg(target_os = "linux")'.dependencies]
 sd-notify = "0.4"
 
-# dev
+[build-dependencies]
+dimidiumlabs-ui-build = { git = "https://gilti.dev/platform.git", rev = "06e80eab24180b9f56e8ff1e0182aad60e56f734" }
+
+[dev-dependencies]
 proptest = "1.6"
 tempfile = "3.24"

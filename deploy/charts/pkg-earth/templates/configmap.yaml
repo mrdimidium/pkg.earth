@@ -34,10 +34,9 @@ data:
     refresh_interval = {{ $backend.refreshInterval | quote }}
 
     {{- end }}
-    [telemetry.stdout]
+    [log]
     enabled = {{ .Values.config.log.enabled }}
-    log_level = {{ .Values.config.log.level | quote }}
-    log_format = {{ .Values.config.log.format | quote }}
+    level = {{ .Values.config.log.level | quote }}
     {{- with .Values.config.extra }}
 
 {{ . | indent 4 }}

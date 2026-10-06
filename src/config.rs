@@ -1,18 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Nikolay Govorov
 // SPDX-License-Identifier: MPL-2.0
 
+use crate::repos::{GoConfig, ZigConfig};
+use dimidiumlabs_config::{NonEmptyPath, NonEmptyString, NonZeroByteSize, NonZeroDuration};
 use garde::Validate;
 use ipnet::IpNet;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use tracing::info;
-
-use base::serde::deserialize_listener_addr;
-use dimidiumlabs_config::{NonEmptyPath, NonEmptyString, NonZeroByteSize, NonZeroDuration};
-use repos::{GoConfig, ZigConfig};
 
 #[derive(Debug, Clone, Deserialize, Validate)]
 #[garde(allow_unvalidated)]
@@ -106,101 +102,23 @@ pub enum LogLevel {
     Error,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum StdoutFormat {
-    #[default]
-    Pretty,
-    Json,
-}
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
-pub struct StdoutConfig {
-    /// Enables sending logs to the stdout
+pub struct LogConfig {
+    /// Enables text logs on stdout.
     pub enabled: bool,
 
-    /// Controls which logs will be sent to stdout
-    pub log_level: LogLevel,
-
-    /// Controls the format of logs in stdout
-    pub log_format: StdoutFormat,
+    /// Controls the minimum emitted log level.
+    pub level: LogLevel,
 }
 
-impl Default for StdoutConfig {
+impl Default for LogConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            log_level: LogLevel::Info,
-            log_format: StdoutFormat::Pretty,
+            level: LogLevel::Info,
         }
     }
-}
-
-#[derive(Debug, Clone, Deserialize, Validate)]
-#[serde(default)]
-#[garde(allow_unvalidated)]
-pub struct OtelcolConfig {
-    /// Enables sending telemetry to the otlp collector
-    pub enabled: bool,
-
-    /// Send logs to OTLP at this level (None = disabled)
-    pub logs: bool,
-
-    /// Send traces to OTLP
-    pub traces: bool,
-
-    /// Send traces to OTLP
-    pub metrics: bool,
-
-    /// OTLP endpoint (grpc:// or http://)
-    pub endpoint: String,
-
-    /// Export timeout as a human-readable duration.
-    #[garde(dive)]
-    pub timeout: NonZeroDuration,
-
-    /// Controls which logs will be sent to otlp
-    pub log_level: LogLevel,
-
-    /// Path to CA certificate for TLS (required for grpcs://)
-    pub tls_ca: Option<PathBuf>,
-
-    /// Path to client certificate for mTLS
-    pub tls_crt: Option<PathBuf>,
-
-    /// Path to client key for mTLS
-    pub tls_key: Option<PathBuf>,
-
-    /// HTTP headers for authentication
-    pub headers: HashMap<String, String>,
-}
-
-impl Default for OtelcolConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            logs: true,
-            traces: true,
-            metrics: true,
-            timeout: NonZeroDuration::from_secs(10),
-            endpoint: "http://localhost:4317".into(),
-            log_level: LogLevel::Info,
-            tls_ca: None,
-            tls_crt: None,
-            tls_key: None,
-            headers: HashMap::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Default, Validate)]
-#[serde(default)]
-#[garde(allow_unvalidated)]
-pub struct TelemetryConfig {
-    pub stdout: StdoutConfig,
-    #[garde(dive)]
-    pub otelcol: Option<OtelcolConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -222,8 +140,8 @@ pub struct ConfigService {
     listen: Vec<ListenerConfig>,
     #[garde(dive)]
     server: ServerConfig,
-    #[garde(dive)]
-    telemetry: TelemetryConfig,
+    #[garde(skip)]
+    log: LogConfig,
     // Backends have no service-specific validation policy.
     #[garde(skip)]
     backends: BackendsConfig,
@@ -236,7 +154,7 @@ impl Default for ConfigService {
             dirname: NonEmptyPath::from("./.pkg-earth-state"),
             listen: vec![ListenerConfig::default()],
             server: ServerConfig::default(),
-            telemetry: TelemetryConfig::default(),
+            log: LogConfig::default(),
             backends: BackendsConfig::default(),
         }
     }
@@ -247,7 +165,6 @@ impl ConfigService {
         config_path: impl AsRef<Path>,
     ) -> Result<dimidiumlabs_config::Loaded<Self>, dimidiumlabs_config::Error> {
         let config_path = config_path.as_ref();
-        info!(path = %config_path.display(), "use config file");
         dimidiumlabs_config::load(env!("CARGO_PKG_NAME"), config_path).await
     }
 
@@ -263,12 +180,31 @@ impl ConfigService {
     pub fn listeners(&self) -> &[ListenerConfig] {
         &self.listen
     }
-    pub fn telemetry(&self) -> &TelemetryConfig {
-        &self.telemetry
+    pub fn log(&self) -> &LogConfig {
+        &self.log
     }
     pub fn backends(&self) -> &BackendsConfig {
         &self.backends
     }
+}
+
+/// Deserializes a socket address from an IP literal or localhost shorthand.
+fn deserialize_listener_addr<'de, D>(deserializer: D) -> Result<SocketAddr, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = String::deserialize(deserializer)?;
+    let raw = raw.trim();
+
+    if let Some(port) = raw.strip_prefix("localhost:") {
+        return port
+            .parse::<u16>()
+            .map(|port| SocketAddr::new(std::net::Ipv4Addr::LOCALHOST.into(), port))
+            .map_err(|err| serde::de::Error::custom(format!("invalid port in '{raw}': {err}")));
+    }
+
+    raw.parse::<SocketAddr>()
+        .map_err(|err| serde::de::Error::custom(format!("invalid address '{raw}': {err}")))
 }
 
 fn invalid(message: impl Into<String>) -> garde::Result {
@@ -375,7 +311,7 @@ impl ConfigService {
                 tls_crt: None,
                 tls_key: None,
             }],
-            telemetry: TelemetryConfig::default(),
+            log: LogConfig::default(),
             backends: BackendsConfig::default(),
         }
     }
@@ -385,6 +321,43 @@ impl ConfigService {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[derive(Debug, Deserialize)]
+    struct AddrWrapper {
+        #[serde(deserialize_with = "deserialize_listener_addr")]
+        value: SocketAddr,
+    }
+
+    #[test]
+    fn deserialize_listener_addr_supports_localhost() {
+        let value: AddrWrapper = serde_json::from_str(r#"{"value": "localhost:1234"}"#).unwrap();
+        assert_eq!(value.value, "127.0.0.1:1234".parse().unwrap());
+    }
+
+    #[test]
+    fn deserialize_listener_addr_trims_input() {
+        let value: AddrWrapper = serde_json::from_str(r#"{"value": "  localhost:4321 "}"#).unwrap();
+        assert_eq!(value.value, "127.0.0.1:4321".parse().unwrap());
+    }
+
+    #[test]
+    fn deserialize_listener_addr_supports_ip_literals() {
+        let value: AddrWrapper = serde_json::from_str(r#"{"value": "127.0.0.1:80"}"#).unwrap();
+        assert_eq!(value.value, "127.0.0.1:80".parse().unwrap());
+    }
+
+    #[test]
+    fn deserialize_listener_addr_rejects_invalid_values() {
+        let error = serde_json::from_str::<AddrWrapper>(r#"{"value": "bad"}"#).unwrap_err();
+        assert!(error.to_string().contains("invalid address"));
+
+        let error =
+            serde_json::from_str::<AddrWrapper>(r#"{"value": "localhost:bad"}"#).unwrap_err();
+        assert!(error.to_string().contains("invalid port"));
+
+        let error = serde_json::from_str::<AddrWrapper>(r#"{"value": 1234}"#).unwrap_err();
+        assert!(error.to_string().contains("invalid type"));
+    }
 
     fn base_config(dir: PathBuf) -> ConfigService {
         ConfigService::for_test(dir)
@@ -399,7 +372,7 @@ mod tests {
         let state = dir.path().join("state");
         fs::create_dir(&state).unwrap();
         let path = dir.path().join("config.toml");
-        fs::write(&path, format!("appname = 'ok'\ndirname = '{}'\nlisten = []\n[server]\nshutdown_timeout = '1s'\nrequest_timeout = '1s'\nmax_body_size = '1 MB'\nmax_concurrent_requests = 1\nrate_limit_period = '1s'\nrate_limit_burst_size = 1\ntrusted_proxies = ['10.2.0.0/16']\n[backends.go]\nrefresh_interval = '1h'\n[telemetry.otelcol]\ntimeout = '10s'\n", state.display())).unwrap();
+        fs::write(&path, format!("appname = 'ok'\ndirname = '{}'\nlisten = []\n[server]\nshutdown_timeout = '1s'\nrequest_timeout = '1s'\nmax_body_size = '1 MB'\nmax_concurrent_requests = 1\nrate_limit_period = '1s'\nrate_limit_burst_size = 1\ntrusted_proxies = ['10.2.0.0/16']\n[backends.go]\nrefresh_interval = '1h'\n[log]\nlevel = 'debug'\n", state.display())).unwrap();
         let loaded = ConfigService::load(&path).await.unwrap();
         assert_eq!(loaded.metadata().path(), path);
         assert_eq!(loaded.config().appname(), "ok");
@@ -417,18 +390,7 @@ mod tests {
                 .as_secs(),
             60 * 60
         );
-        assert_eq!(
-            loaded
-                .config()
-                .telemetry()
-                .otelcol
-                .as_ref()
-                .unwrap()
-                .timeout
-                .get()
-                .as_secs(),
-            10
-        );
+        assert_eq!(loaded.config().log().level, LogLevel::Debug);
     }
 
     #[tokio::test]

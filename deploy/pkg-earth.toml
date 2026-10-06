@@ -30,32 +30,10 @@ hostnames = ["localhost", "127.0.0.1", "[::1]"]
 # tls_crt = "/etc/pkg-earth/cert.pem"
 # tls_key = "/etc/pkg-earth/key.pem"
 
-# Telemetry configuration
-# Logs to stdout (pretty or json format)
-[telemetry.stdout]
+# Text logs to stdout.
+[log]
 enabled = true
-log_level = "info"      # trace, debug, info, warning, error
-log_format = "pretty"   # pretty, json
+level = "info" # trace, debug, info, warning, error
 
-# OpenTelemetry Collector (OTLP)
-# Uncomment to enable sending logs and traces to an OTLP collector
-# [telemetry.otelcol]
-# enabled = true
-# logs = true
-# traces = true
-# endpoint = "http://localhost:4318"  # HTTP protocol (no TLS)
-# # endpoint = "grpc://localhost:4317" # gRPC protocol (requires TLS)
-# timeout = "10s"
-# log_level = "info"
-#
-# # For gRPC with TLS, specify certificates:
-# # tls_ca = "/etc/pkg-earth/otel-ca.crt"
-# # tls_crt = "/etc/pkg-earth/otel-client.crt"  # for mTLS
-# # tls_key = "/etc/pkg-earth/otel-client.key"  # for mTLS
-#
-# # HTTP headers for authentication:
-# # [telemetry.otelcol.headers]
-# # Authorization = "Bearer <token>"
-
-# Environment variable PKG_EARTH_LOG overrides log_level settings.
-# Example: PKG_EARTH_LOG=debug,sqlx=warn
+# Environment variable PKG_EARTH_LOG overrides the configured level.
+# Example: PKG_EARTH_LOG=debug

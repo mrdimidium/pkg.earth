@@ -6,7 +6,7 @@ version = 1
 [[annotations]]
 path = [
     "deploy/charts/pkg-earth/templates/*",
-    "crates/pkg-earth/src/assets/*",
+    "src/assets/*",
     "Cargo.lock",
     "mise.lock",
 ]

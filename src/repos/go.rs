@@ -4,6 +4,7 @@
 use std::time::Duration as StdDuration;
 
 use dimidiumlabs_config::Duration;
+use log::error;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -97,7 +98,7 @@ impl BackendSpec for GoSpec {
             let sort_key = match GoVersion::parse(&u.version) {
                 Ok(v) => v.sort_key(),
                 Err(_) => {
-                    tracing::error!(version = u.version, "invalid go version, skipping");
+                    error!("invalid Go version, skipping; version={}", u.version);
                     continue;
                 }
             };

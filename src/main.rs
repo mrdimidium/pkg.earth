@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MPL-2.0
 
 mod config;
+mod logging;
 mod proxy;
+mod repos;
 mod storage;
-mod telemetry;
 mod ui;
 
 mod controller_backend;
@@ -17,9 +18,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
-    body::Body,
+    body::{Body, HttpBody as _},
     extract::ConnectInfo,
-    http::{self, Request, Response},
+    http::{self, Request},
+    middleware::Next,
+    response::Response,
 };
 use axum_server::tls_rustls::RustlsConfig;
 use dimidiumlabs_server::{
@@ -30,6 +33,7 @@ use dimidiumlabs_server::{
     transport::HttpTransport,
 };
 use hyper_util::{rt::TokioIo, service::TowerToHyperService};
+use log::{error, info, trace};
 #[cfg(target_os = "linux")]
 use sd_notify::NotifyState;
 use tokio::{
@@ -37,12 +41,10 @@ use tokio::{
     signal,
 };
 use tokio_rustls::TlsAcceptor;
-use tracing::{error, info, trace};
-use tracing_subscriber::registry::LookupSpan;
 
 use crate::controller_backend::BackendController;
 use crate::controller_web::WebController;
-use repos::{Backend, BackendSpec, GoBackend, ZigBackend};
+use crate::repos::{Backend, BackendSpec, GoBackend, ZigBackend};
 
 async fn init_backend<S: BackendSpec>(
     backend: Backend<S>,
@@ -77,14 +79,14 @@ async fn run_index_refresh<S: BackendSpec>(
     loop {
         tokio::select! {
             _ = cancel.cancelled() => {
-                info!(backend = name, "index refresh stopped");
+                info!("index refresh stopped; backend={name}");
                 break;
             }
             _ = ticker.tick() => {
-                info!(backend = name, "refreshing index");
+                info!("refreshing index; backend={name}");
                 match backend.refresh().await {
-                    Ok(()) => info!(backend = name, "index refreshed"),
-                    Err(e) => error!(backend = name, "index refresh failed: {e}"),
+                    Ok(()) => info!("index refreshed; backend={name}"),
+                    Err(error) => error!("index refresh failed; backend={name} error={error}"),
                 }
             }
         }
@@ -92,6 +94,7 @@ async fn run_index_refresh<S: BackendSpec>(
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const REQUEST_ID_HEADER: http::HeaderName = http::HeaderName::from_static("x-request-id");
 const HTTP_HEADER_READ_TIMEOUT: Duration = Duration::from_secs(10);
 const HTTP1_MAX_BUFFER_BYTES: usize = 32 * 1024;
 const HTTP2_MAX_CONCURRENT_STREAMS: u32 = 128;
@@ -130,14 +133,46 @@ struct ListenerInfo {
     addr: SocketAddr,
 }
 
-/// Request info stored in span extensions for logging
-#[derive(Clone)]
-struct RequestInfo {
-    method: http::Method,
-    version: http::Version,
-    path: http::Uri,
-    host: Option<String>,
-    user_agent: Option<String>,
+async fn log_request(request: Request<Body>, next: Next) -> Response {
+    let started_at = std::time::Instant::now();
+    let request_id = request
+        .headers()
+        .get(&REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("<invalid>")
+        .to_owned();
+    let local_addr = request
+        .extensions()
+        .get::<ListenerInfo>()
+        .map(|info| info.addr);
+    let remote_addr = request
+        .extensions()
+        .get::<ClientIp>()
+        .map(|client| client.0);
+    let method = request.method().clone();
+    let version = request.version();
+    let path = request.uri().clone();
+    let host = extract_host(&request);
+    let user_agent = request
+        .headers()
+        .get(http::header::USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .map(String::from);
+
+    let response = next.run(request).await;
+    let status = response.status().as_u16();
+    let content_length = response.body().size_hint().exact();
+    let content_type = response
+        .headers()
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok());
+
+    info!(
+        "HTTP request; request_id={request_id} local_addr={local_addr:?} remote_addr={remote_addr:?} method={method} version={version:?} path={path} host={host:?} user_agent={user_agent:?} status={status} latency_ns={} content_type={content_type:?} content_length={content_length:?}",
+        started_at.elapsed().as_nanos(),
+    );
+
+    response
 }
 
 #[tokio::main]
@@ -162,101 +197,16 @@ async fn main() {
             eprintln!("invalid config: {error}");
             std::process::exit(1);
         });
-    let (config, _metadata) = loaded_config.into_parts();
+    let (config, metadata) = loaded_config.into_parts();
+    logging::init(config.log());
+    info!("using config file; path={}", metadata.path().display());
     let config = Arc::new(config);
-
-    let mut telemetry =
-        telemetry::TelemetryService::init(config.telemetry(), config.appname(), VERSION);
 
     let storage = Arc::new(storage::StorageService::new(config.clone()).await.unwrap());
     let network = Arc::new(proxy::ProxyService::new());
 
     let source = format!("pkg.earth:{}", config.appname());
     let backends = config.backends();
-
-    const REQUEST_ID_HEADER: http::HeaderName = http::HeaderName::from_static("x-request-id");
-
-    let trace_layer = tower_http::trace::TraceLayer::new_for_http()
-        .make_span_with(|req: &http::Request<Body>| {
-            let request_id = req
-                .headers()
-                .get(&REQUEST_ID_HEADER)
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or("<invalid>");
-            let local_addr = req.extensions().get::<ListenerInfo>().map(|a| a.addr);
-            let remote_addr = req.extensions().get::<ClientIp>().map(|client| client.0);
-
-            tracing::info_span!(
-                "http_request",
-                request_id = %request_id,
-                local_addr = ?local_addr,
-                remote_addr = ?remote_addr,
-            )
-        })
-        .on_request(|req: &Request<Body>, span: &tracing::Span| {
-            let info = RequestInfo {
-                method: req.method().clone(),
-                path: req.uri().clone(),
-                version: req.version(),
-                host: extract_host(req),
-                user_agent: req
-                    .headers()
-                    .get(http::header::USER_AGENT)
-                    .and_then(|v| v.to_str().ok())
-                    .map(String::from),
-            };
-
-            span.with_subscriber(|(id, dispatch)| {
-                if let Some(reg) = dispatch.downcast_ref::<tracing_subscriber::Registry>()
-                    && let Some(span_ref) = reg.span(id)
-                {
-                    span_ref.extensions_mut().insert(info);
-                }
-            });
-        })
-        .on_response(
-            |res: &Response<Body>, latency: std::time::Duration, span: &tracing::Span| {
-                use axum::body::HttpBody as _;
-
-                let status = res.status().as_u16();
-                let content_length = res.body().size_hint().exact();
-                let content_type = res
-                    .headers()
-                    .get(http::header::CONTENT_TYPE)
-                    .and_then(|v| v.to_str().ok());
-
-                let req_info = span.with_subscriber(|(id, dispatch)| {
-                    dispatch
-                        .downcast_ref::<tracing_subscriber::Registry>()
-                        .and_then(|reg| reg.span(id))
-                        .and_then(|span_ref| span_ref.extensions().get::<RequestInfo>().cloned())
-                });
-
-                if let Some(Some(req_info)) = req_info {
-                    info!(
-                        method = %req_info.method,
-                        version = ?req_info.version,
-                        path = %req_info.path,
-                        host = req_info.host,
-                        user_agent = req_info.user_agent,
-                        status,
-                        latency = latency.as_nanos() as u64,
-                        content_type,
-                        content_length,
-                        "on_response",
-                    );
-                } else {
-                    info!(
-                        status,
-                        latency = latency.as_nanos() as u64,
-                        content_type,
-                        content_length,
-                        "on_response",
-                    );
-                }
-            },
-        )
-        .on_failure(tower_http::trace::DefaultOnFailure::new().level(tracing::Level::ERROR));
 
     let rate_limit_config = Arc::new(
         rate_limit(
@@ -363,7 +313,7 @@ async fn main() {
                 http::StatusCode::REQUEST_TIMEOUT,
                 config.server().request_timeout.get(),
             ))
-            .layer(trace_layer.clone())
+            .layer(axum::middleware::from_fn(log_request))
             .layer(RateLimitLayer::new(rate_limit_config.clone()))
             .layer(admission.clone())
             .layer(client_ip.clone())
@@ -401,7 +351,7 @@ async fn main() {
         tasks.spawn(async move {
             if let Err(error) = serve_listener(listener, listener_app, transport, tls, cancel).await
             {
-                error!(%error, %addr, "listener failed");
+                error!("listener failed; addr={addr} error={error}");
             }
         });
 
@@ -426,10 +376,7 @@ async fn main() {
         let mut usec = 0u64;
         (sd_notify::watchdog_enabled(true, &mut usec) && usec > 0).then(|| {
             let interval = std::time::Duration::from_micros(usec) / 2;
-            info!(
-                interval_ms = interval.as_millis() as u64,
-                "watchdog enabled"
-            );
+            info!("watchdog enabled; interval_ms={}", interval.as_millis());
             watchdog_ticker = tokio::time::interval(interval);
         });
     };
@@ -516,8 +463,6 @@ async fn main() {
     } else {
         info!("shutdown complete");
     }
-
-    telemetry.shutdown();
 }
 
 async fn serve_listener(
@@ -545,8 +490,8 @@ async fn serve_listener(
                     if let Some(tls) = tls {
                         match tokio::time::timeout(TLS_HANDSHAKE_TIMEOUT, tls.accept(stream)).await {
                             Ok(Ok(stream)) => serve_connection(stream, app, transport, shutdown).await,
-                            Ok(Err(error)) => trace!(%error, %peer, "TLS handshake failed"),
-                            Err(_) => trace!(%peer, "TLS handshake timed out"),
+                            Ok(Err(error)) => trace!("TLS handshake failed; peer={peer} error={error}"),
+                            Err(_) => trace!("TLS handshake timed out; peer={peer}"),
                         }
                     } else {
                         serve_connection(stream, app, transport, shutdown).await;
@@ -555,7 +500,7 @@ async fn serve_listener(
             }
             Some(result) = connections.join_next(), if !connections.is_empty() => {
                 if let Err(error) = result {
-                    error!(%error, "HTTP connection task failed");
+                    error!("HTTP connection task failed; error={error}");
                 }
             }
         }
@@ -563,7 +508,7 @@ async fn serve_listener(
 
     while let Some(result) = connections.join_next().await {
         if let Err(error) = result {
-            error!(%error, "HTTP connection task failed");
+            error!("HTTP connection task failed; error={error}");
         }
     }
     Ok(())
@@ -589,7 +534,7 @@ async fn serve_connection<IO>(
         }
     };
     if let Err(error) = result {
-        trace!(%error, "HTTP connection failed");
+        trace!("HTTP connection failed; error={error}");
     }
 }
 

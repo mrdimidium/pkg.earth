@@ -12,11 +12,11 @@ use dimidiumlabs_server::{
     },
 };
 use dimidiumlabs_ui::{AssetsCatalog, Document, FOUNDATION};
+use log::error;
 use maud::{Markup, Render};
 use serde::Deserialize;
-use tracing::error;
 
-use repos::{GoBackend, ZigBackend};
+use crate::repos::{GoBackend, ZigBackend};
 
 use crate::ui::{
     APPLICATION,
@@ -209,7 +209,7 @@ impl WebController {
         Document::new(
             "Third Party Licenses",
             LicensesPage {
-                project_license: include_str!("../../../LICENSE"),
+                project_license: include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/LICENSE")),
                 overview,
                 licenses,
             }

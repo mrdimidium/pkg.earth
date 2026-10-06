@@ -29,17 +29,17 @@ use std::sync;
 
 use bytes::Bytes;
 use crc32fast::Hasher as Crc32Hasher;
+use log::{debug, error, warn};
 use sqlx::encode::{Encode, IsNull};
 use sqlx::error::BoxDynError;
 use sqlx::{FromRow, Pool, Sqlite, query, query_as, query_scalar, sqlite};
 use thiserror::Error;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use tracing::{debug, error, instrument, warn};
 use uuid::Uuid;
 
 use crate::config::ConfigService;
-use repos::{BackendError, BackendStorage, RawRelease, RawReleaseFile, Release};
+use crate::repos::{BackendError, BackendStorage, RawRelease, RawReleaseFile, Release};
 
 const SQLITE_POOL_SIZE: u32 = 16;
 const INLINE_THRESHOLD: usize = 256 * 1024; // 256 KB
@@ -334,20 +334,20 @@ impl StorageService {
             let name = match path.file_name().and_then(|name| name.to_str()) {
                 Some(name) => name.to_string(),
                 None => {
-                    warn!(path = %path.display(), "cleanup: invalid blob name");
+                    warn!("cleanup: invalid blob name; path={}", path.display());
                     let _ = fs::remove_file(path).await;
                     return Ok(());
                 }
             };
 
             if name.ends_with(".part") {
-                warn!(path = %path.display(), "cleanup: removing temp file");
+                warn!("cleanup: removing temp file; path={}", path.display());
                 let _ = fs::remove_file(path).await;
                 return Ok(());
             }
 
             if name.len() != 32 {
-                warn!(path = %path.display(), "cleanup: invalid blob name length");
+                warn!("cleanup: invalid blob name length; path={}", path.display());
                 let _ = fs::remove_file(path).await;
                 return Ok(());
             }
@@ -355,7 +355,7 @@ impl StorageService {
             let id_bytes = match hex::decode(&name) {
                 Ok(bytes) => bytes,
                 Err(_) => {
-                    warn!(path = %path.display(), "cleanup: invalid blob name hex");
+                    warn!("cleanup: invalid blob name hex; path={}", path.display());
                     let _ = fs::remove_file(path).await;
                     return Ok(());
                 }
@@ -364,7 +364,7 @@ impl StorageService {
             let id = match Uuid::from_slice(&id_bytes) {
                 Ok(uuid) => Id(uuid),
                 Err(_) => {
-                    warn!(path = %path.display(), "cleanup: invalid blob uuid");
+                    warn!("cleanup: invalid blob UUID; path={}", path.display());
                     let _ = fs::remove_file(path).await;
                     return Ok(());
                 }
@@ -376,7 +376,7 @@ impl StorageService {
                 .await?;
 
             if exists.is_none() {
-                warn!(path = %path.display(), "cleanup: removing orphan blob");
+                warn!("cleanup: removing orphan blob; path={}", path.display());
                 let _ = fs::remove_file(path).await;
             }
 
@@ -457,7 +457,6 @@ impl StorageService {
         Ok(())
     }
 
-    #[instrument(skip(self))]
     pub async fn get(&self, scope: &str, filename: &str) -> Result<Option<Object>, StorageError> {
         let file: Option<Object> =
             query_as("SELECT * FROM datafiles WHERE scope = ?1 AND file_name = ?2")
@@ -468,7 +467,7 @@ impl StorageService {
 
         match file {
             None => {
-                debug!("get: file not found");
+                debug!("get: file not found; scope={scope} filename={filename}");
                 Ok(None)
             }
             Some(mut file) if !file.inlined => {
@@ -487,17 +486,22 @@ impl StorageService {
                 }
 
                 file.file_bytes = Blob(bytes);
-                debug!(size = file.file_size, "get: loaded from disk");
+                debug!(
+                    "get: loaded from disk; scope={scope} filename={filename} size={}",
+                    file.file_size
+                );
                 Ok(Some(file))
             }
             Some(file) => {
-                debug!(size = file.file_size, "get: loaded inline");
+                debug!(
+                    "get: loaded inline; scope={scope} filename={filename} size={}",
+                    file.file_size
+                );
                 Ok(Some(file))
             }
         }
     }
 
-    #[instrument(skip(self, bytes), fields(size = bytes.len()))]
     pub async fn put(
         &self,
         scope: &str,
@@ -565,7 +569,10 @@ impl StorageService {
                     }
 
                     tx.commit().await?;
-                    debug!("put: a new file has been commited");
+                    debug!(
+                        "put: committed new file; scope={scope} filename={filename} size={}",
+                        bytes.len()
+                    );
                     Ok(())
                 }
                 Err(sqlx::Error::Database(ref db_err)) if db_err.is_unique_violation() => {
@@ -583,11 +590,15 @@ impl StorageService {
                                 tx.rollback().await?;
                             }
 
-                            debug!("put: identical file already exists");
+                            debug!(
+                                "put: identical file already exists; scope={scope} filename={filename}"
+                            );
                             return Ok(());
                         }
                         Some(_) => {
-                            warn!("put: file already exists with different content");
+                            warn!(
+                                "put: file already exists with different content; scope={scope} filename={filename}"
+                            );
                         }
                         None => {
                             // unique_violation but row doesn't exist - shouldn't happen
@@ -621,9 +632,8 @@ impl StorageService {
                 Ok(tx) => tx,
                 Err(e) => {
                     error!(
-                        backend = release.backend,
-                        version = release.version,
-                        "failed to start transaction: {e}"
+                        "failed to start transaction; backend={} version={} error={e}",
+                        release.backend, release.version
                     );
                     return Err(e.into());
                 }
@@ -658,10 +668,8 @@ impl StorageService {
                             .await?;
                     if changed {
                         warn!(
-                            backend = release.backend,
-                            version = release.version,
-                            filename = file.filename,
-                            "index file changed"
+                            "index file changed; backend={} version={} filename={}",
+                            release.backend, release.version, file.filename
                         );
                     }
                 }
@@ -674,17 +682,15 @@ impl StorageService {
                 Ok(()) => {
                     if let Err(e) = tx.commit().await {
                         error!(
-                            backend = release.backend,
-                            version = release.version,
-                            "failed to commit release: {e}"
+                            "failed to commit release; backend={} version={} error={e}",
+                            release.backend, release.version
                         );
                     }
                 }
                 Err(e) => {
                     error!(
-                        backend = release.backend,
-                        version = release.version,
-                        "failed to store release, skipping: {e}"
+                        "failed to store release, skipping; backend={} version={} error={e}",
+                        release.backend, release.version
                     );
                     let _ = tx.rollback().await;
                 }

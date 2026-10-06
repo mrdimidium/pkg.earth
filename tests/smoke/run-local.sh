@@ -36,10 +36,9 @@ max_concurrent_requests = 64
 rate_limit_period = "1s"
 rate_limit_burst_size = 200
 
-[telemetry.stdout]
+[log]
 enabled = true
-log_level = "info"
-log_format = "pretty"
+level = "info"
 EOF
 
 mkdir -p "$TMPDIR/state"
@@ -72,4 +71,4 @@ if ! grep -q "index refreshed" "$LOGFILE" 2>/dev/null; then
 fi
 
 # Run smoke tests
-PKG_EARTH_URL="${BASE_URL}" cargo run -p smoke
+PKG_EARTH_URL="${BASE_URL}" ./tests/smoke.sh

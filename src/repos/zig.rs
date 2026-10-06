@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::time::Duration as StdDuration;
 
 use dimidiumlabs_config::Duration;
+use log::{debug, error};
 use semver::Version as SemVersion;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Serialize};
@@ -175,7 +176,7 @@ impl BackendSpec for ZigSpec {
             let sort_key = match ZigVersion::parse(&version_str) {
                 Ok(v) => v.sort_key(),
                 Err(e) => {
-                    tracing::error!(version = version_str, "invalid zig version, skipping: {e}");
+                    error!("invalid Zig version, skipping; version={version_str} error={e}");
                     continue;
                 }
             };
@@ -232,7 +233,7 @@ impl BackendSpec for ZigSpec {
         let mut typed: ReleaseFile<ZigFileMeta> = file.clone().try_into_typed()?;
         typed.meta.minisig = Some(minisig);
 
-        tracing::debug!(filename = file.filename, "cached minisig");
+        debug!("cached minisig; filename={}", file.filename);
         Ok(typed.to_raw())
     }
 }

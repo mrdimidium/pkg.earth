@@ -64,7 +64,6 @@ config:
     log:
         enabled: true
         level: info
-        format: json
     extra: ""
 
 persistence:

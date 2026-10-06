@@ -16,7 +16,7 @@ use hyper_util::rt::TokioExecutor;
 use tower::{ServiceBuilder, ServiceExt};
 use url::Url;
 
-use repos::{BackendError, BackendNetwork};
+use crate::repos::{BackendError, BackendNetwork};
 
 #[derive(Clone)]
 pub struct DownloadRequest {

@@ -4,9 +4,9 @@
 fn main() {
     dimidiumlabs_ui_build::build("APPLICATION", &["src/styles", "src/ui"], &["src/assets"])
         .expect("failed to compile UI styles");
-    println!("cargo::rerun-if-changed=../../Cargo.lock");
-    println!("cargo::rerun-if-changed=../../mise.toml");
-    println!("cargo::rerun-if-changed=../../mise.lock");
+    println!("cargo::rerun-if-changed=Cargo.lock");
+    println!("cargo::rerun-if-changed=mise.toml");
+    println!("cargo::rerun-if-changed=mise.lock");
 
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let target = std::env::var("TARGET").unwrap();
